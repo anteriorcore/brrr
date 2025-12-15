@@ -18,7 +18,7 @@ jobs:
         with:
           # for npm-version-to-git
           fetch-depth: 0
-      - uses: cachix/install-nix-action@0b0e072294b088b73964f1d72dfdac0951439dbd
+      - uses: cachix/install-nix-action@4e002c8ec80594ecd40e759629461e26c8abed15
         with:
           enable_kvm: true
           extra_nix_config: "system-features = nixos-test benchmark big-parallel kvm"
