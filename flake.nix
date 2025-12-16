@@ -107,6 +107,7 @@
                       AWS_ACCESS_KEY_ID = "000000000000";
                       AWS_SECRET_ACCESS_KEY = "fake";
                     };
+                    inherit (pkgs.stdenv.hostPlatform) system;
                   in
                   {
                     redis.r1.enable = true;
@@ -115,17 +116,17 @@
                       args = [ "-disableTelemetry" ];
                     };
                     brrr-demo.server = {
-                      package = self.packages.${pkgs.system}.brrr-demo-py;
+                      package = self.packages.${system}.brrr-demo-py;
                       args = [ "web_server" ];
                       environment = demoEnv;
                     };
                     brrr-demo.worker-py = {
-                      package = self.packages.${pkgs.system}.brrr-demo-py;
+                      package = self.packages.${system}.brrr-demo-py;
                       args = [ "brrr_worker" ];
                       environment = demoEnv;
                     };
                     brrr-demo.worker-ts = {
-                      package = self.packages.${pkgs.system}.brrr-demo-ts;
+                      package = self.packages.${system}.brrr-demo-ts;
                       environment = demoEnv;
                     };
                   };
