@@ -333,14 +333,6 @@
                             exec pytest "$@"
                           )'';
                       }
-                      {
-                        name = "brrr-demo-full";
-                        category = "demo";
-                        help = "Launch a full demo locally";
-                        command = ''
-                          nix run .#demo
-                        '';
-                      }
                     ]
                     ++ sharedCommands;
                   };
