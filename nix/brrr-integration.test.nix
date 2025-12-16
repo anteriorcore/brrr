@@ -67,15 +67,18 @@ let
       {
         lib,
         writeShellScriptBin,
-        system,
+        stdenv,
       }:
+      let
+        inherit (stdenv.hostPlatform) system;
+      in
       lib.getExe (
         writeShellScriptBin "brrr-py-test-integration" ''
           set -euo pipefail
           ${self.packages.${system}.brrr-venv-test}/bin/pytest ${self.packages.${system}.brrr.src}
         ''
       );
-    ts = { system }: "${self.packages.${system}.brrrts}/bin/brrr-test-integration";
+    ts = { stdenv }: "${self.packages.${stdenv.hostPlatform.system}.brrrts}/bin/brrr-test-integration";
   };
 in
 {
