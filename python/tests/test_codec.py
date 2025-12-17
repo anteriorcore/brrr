@@ -33,7 +33,7 @@ async def test_codec_key_no_args() -> None:
         return a
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         calls[f"foo({a})"] += 1
 
         val = 0
@@ -44,7 +44,9 @@ async def test_codec_key_no_args() -> None:
         assert val == a
         return val
 
-    b = LocalBrrr(topic=TOPIC, handlers=dict(foo=foo, same=same), codec=codec)
+    b = LocalBrrr(
+        topic=TOPIC, handlers=dict(foo=foo, same=same), codec=codec, context=None
+    )
     await b.run(foo)(50)
 
     assert calls == Counter(
@@ -70,7 +72,7 @@ async def test_codec_api() -> None:
         return x + int(y)
 
     @brrr.handler
-    async def foo(app: ActiveWorker) -> int:
+    async def foo(app: ActiveWorker[None]) -> int:
         val = (
             await app.call(plus)(1, "2")
             + await app.call(plus)(x=3, y="4")
@@ -80,7 +82,9 @@ async def test_codec_api() -> None:
         assert val == sum(range(9))
         return val
 
-    b = LocalBrrr(topic=TOPIC, handlers=dict(foo=foo, plus=plus), codec=codec)
+    b = LocalBrrr(
+        topic=TOPIC, handlers=dict(foo=foo, plus=plus), codec=codec, context=None
+    )
     await b.run("foo")()
 
     codec.encode_call.assert_has_calls(

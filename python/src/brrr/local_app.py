@@ -9,13 +9,13 @@ from .codec import Codec
 from .connection import Server, serve
 
 
-class LocalApp:
+class LocalApp[T]:
     """
     Low(er)-level primitive for local dev, mimics App* types.
     """
 
     def __init__(
-        self, *, topic: str, conn: Server, queue: InMemoryQueue, app: AppWorker
+        self, *, topic: str, conn: Server, queue: InMemoryQueue, app: AppWorker[T]
     ) -> None:
         self._conn = conn
         self._app = app
@@ -34,9 +34,9 @@ class LocalApp:
 
 
 @asynccontextmanager
-async def local_app(
-    topic: str, handlers: Mapping[str, WrappedTask], codec: Codec
-) -> AsyncIterator[LocalApp]:
+async def local_app[T](
+    topic: str, handlers: Mapping[str, WrappedTask], codec: Codec, context: T
+) -> AsyncIterator[LocalApp[T]]:
     """
     Helper function for unit tests which use brrr
     """
@@ -44,11 +44,13 @@ async def local_app(
     queue = InMemoryQueue([topic])
 
     async with serve(queue, store, store) as conn:
-        app = AppWorker(handlers=handlers, codec=codec, connection=conn)
+        app = AppWorker(
+            handlers=handlers, codec=codec, connection=conn, context=context
+        )
         yield LocalApp(topic=topic, conn=conn, queue=queue, app=app)
 
 
-class LocalBrrr:
+class LocalBrrr[T]:
     """Helper class for your unit tests to use an ephemeral in-memory brrr.
 
     >>> @brrr.handler_no_arg
@@ -63,12 +65,20 @@ class LocalBrrr:
 
     """
 
-    def __init__(self, topic: str, handlers: Mapping[str, WrappedTask], codec: Codec):
+    def __init__(
+        self,
+        topic: str,
+        handlers: Mapping[str, WrappedTask],
+        codec: Codec,
+        *,
+        context: T,
+    ) -> None:
         self.topic = topic
         self.handlers = handlers
         self.codec = codec
+        self.context = context
 
-    def run[**P, R](self, f: WrappedTaskT[..., P, R]) -> Callable[P, Awaitable[R]]:
+    def run[**P, R](self, f: WrappedTaskT[..., P, R, T]) -> Callable[P, Awaitable[R]]:
         """Create an ephemeral brrr app and runt his entire task to completion.
 
         Named `run' to emphasize this is different from app.call.  This isn't
@@ -80,7 +90,10 @@ class LocalBrrr:
 
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             async with local_app(
-                topic=self.topic, handlers=self.handlers, codec=self.codec
+                topic=self.topic,
+                handlers=self.handlers,
+                codec=self.codec,
+                context=self.context,
             ) as app:
                 await app.schedule(f)(*args, **kwargs)
                 await app.run()

@@ -33,7 +33,7 @@ class WrappedTask(Protocol):
     pass
 
 
-class WrappedTaskT[**H, **U, R](WrappedTask):
+class WrappedTaskT[**H, **U, R, T](WrappedTask):
     """Type-aware wrapped brrr handler for apps.
 
     - H: argskwargs of the original handler
@@ -47,7 +47,7 @@ class WrappedTaskT[**H, **U, R](WrappedTask):
     @abstractmethod
     async def __call__(self, *args: H.args, **kwargs: H.kwargs) -> R: ...
 
-    _brrr_handler: Callable[Concatenate[ActiveWorker, U], Awaitable[R]]
+    _brrr_handler: Callable[Concatenate[ActiveWorker[T], U], Awaitable[R]]
 
 
 class NotInBrrrError(Exception):
@@ -63,14 +63,14 @@ def _val2key[K, V](d: Mapping[K, V], val: V) -> K:
     raise KeyError(val)
 
 
-def handler_no_arg[**P, R](
+def handler_no_arg[**P, R, T](
     f: Callable[P, Awaitable[R]],
-) -> WrappedTaskT[P, P, R]:
+) -> WrappedTaskT[P, P, R, T]:
     """A brrr handler which does not care for the worker app as an argument."""
 
     # A brrr task API compatible version of this function is one which just
     # ignores its first arg
-    async def _brrr_handler(_: ActiveWorker, *args: P.args, **kwargs: P.kwargs) -> R:
+    async def _brrr_handler(_: ActiveWorker[T], *args: P.args, **kwargs: P.kwargs) -> R:
         return await f(*args, **kwargs)
 
     # Rather than create a wrapper for the original arg, we can tack this
@@ -81,9 +81,9 @@ def handler_no_arg[**P, R](
     return f  # type: ignore[return-value]
 
 
-def handler[**P, R](
-    f: Callable[Concatenate[ActiveWorker, P], Awaitable[R]],
-) -> WrappedTaskT[Concatenate[ActiveWorker, P], P, R]:
+def handler[**P, R, T](
+    f: Callable[Concatenate[ActiveWorker[T], P], Awaitable[R]],
+) -> WrappedTaskT[Concatenate[ActiveWorker[T], P], P, R, T]:
     # This function already satisfies the brrr task API
     setattr(f, "_brrr_handler", f)
     return f  # type: ignore[return-value]
@@ -97,25 +97,29 @@ class TaskCollection(UserDict[str, WrappedTask]):
         return spec if isinstance(spec, str) else self.task2name(spec)
 
 
-class AppConsumer:
+class AppConsumer[T]:
     _codec: Codec
     _connection: Connection
+    _context: T
     tasks: TaskCollection
 
     def __init__(
         self,
         codec: Codec,
         connection: Connection,
+        *,
+        context: T,
         handlers: Mapping[str, WrappedTask] | None = None,
     ):
         self._codec = codec
         self._connection = connection
+        self._context = context
         self.tasks = TaskCollection(**(handlers or {}))
 
     @overload
     def schedule[**P, R](
         self,
-        task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]],
+        task_spec: Callable[Concatenate[ActiveWorker[T], P], Awaitable[R]],
         *,
         topic: str,
     ) -> Callable[P, Awaitable[None]]: ...
@@ -144,7 +148,7 @@ class AppConsumer:
 
     @overload
     def read[**P, R](
-        self, task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]]
+        self, task_spec: Callable[Concatenate[ActiveWorker[T], P], Awaitable[R]]
     ) -> Callable[P, Awaitable[R]]: ...
     @overload
     def read[**P, R](
@@ -163,7 +167,7 @@ class AppConsumer:
         return f
 
 
-class AppWorker(AppConsumer):
+class AppWorker[T](AppConsumer[T]):
     async def handle(self, request: Request, conn: Connection) -> Response | Defer:
         """Glue between this class and the underlying Connection.loop handler"""
         task_name = request.call.task_name
@@ -181,7 +185,7 @@ class AppWorker(AppConsumer):
             # useful for the api (see its own docstring).  But this is the price
             # you pay:
             getattr(self.tasks[task_name], "_brrr_handler"),
-            ActiveWorker(conn, self._codec, self.tasks),
+            ActiveWorker(conn, self._codec, self.tasks, context=self._context),
         )
         with allow_only():
             try:
@@ -191,20 +195,28 @@ class AppWorker(AppConsumer):
             return Response(payload=resp)
 
 
-class ActiveWorker:
+class ActiveWorker[T]:
     _connection: Connection
     _codec: Codec
     _handlers: TaskCollection
+    _context: T
 
-    def __init__(self, conn: Connection, codec: Codec, tasks: TaskCollection):
+    def __init__(
+        self, conn: Connection, codec: Codec, tasks: TaskCollection, *, context: T
+    ):
         self._connection = conn
         self._codec = codec
         self._handlers = tasks
+        self._context = context
+
+    def get_context(self) -> T:
+        """Get the context object associated with this worker instance."""
+        return self._context
 
     @overload
     def call[**P, R](
         self,
-        task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]],
+        task_spec: Callable[Concatenate[ActiveWorker[T], P], Awaitable[R]],
         *,
         topic: str | None = None,
     ) -> Callable[P, Awaitable[R]]: ...
@@ -274,7 +286,7 @@ class ActiveWorker:
         coro_or_future5: Awaitable[T5],
     ) -> tuple[T1, T2, T3, T4, T5]: ...
     @overload
-    async def gather[T](self, *coro_or_futures: Awaitable[T]) -> list[T]: ...
+    async def gather[Ts](self, *coro_or_futures: Awaitable[Ts]) -> list[Ts]: ...
     @overload
     async def gather(
         self,

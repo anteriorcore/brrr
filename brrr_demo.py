@@ -145,6 +145,7 @@ async def with_brrr(
                 ),
                 codec=JsonKwargsCodec(),
                 connection=conn,
+                context=None,
             )
             token = brrr_app.set(app)
             try:

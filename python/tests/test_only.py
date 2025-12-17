@@ -21,7 +21,9 @@ async def test_only_in_brrr(topic: str, task_name: str) -> None:
     async def foo(a: int) -> int:
         return a * 2
 
-    b = LocalBrrr(topic=topic, handlers={task_name: foo}, codec=PickleCodec())
+    b = LocalBrrr(
+        topic=topic, handlers={task_name: foo}, codec=PickleCodec(), context=None
+    )
     assert await b.run(foo)(5) == 10
 
 

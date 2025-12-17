@@ -36,7 +36,7 @@ async def test_app_worker(topic: str, task_name: str) -> None:
         return 456
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         return await app.call(bar, topic=topic)(a + 1) + 1
 
     async with brrr.serve(queue, store, store) as conn:
@@ -44,6 +44,7 @@ async def test_app_worker(topic: str, task_name: str) -> None:
             handlers={name_foo: foo, name_bar: bar},
             codec=PickleCodec(),
             connection=conn,
+            context=None,
         )
         await app.schedule(foo, topic=topic)(122)
         queue.flush()
@@ -65,7 +66,10 @@ async def test_app_consumer(topic: str, task_name: str) -> None:
     # Seed the db with a known value
     async with brrr.serve(queue, store, store) as conn:
         appw = AppWorker(
-            handlers={task_name: foo}, codec=PickleCodec(), connection=conn
+            handlers={task_name: foo},
+            codec=PickleCodec(),
+            connection=conn,
+            context=None,
         )
         await appw.schedule(foo, topic=topic)(5)
         queue.flush()
@@ -73,7 +77,7 @@ async def test_app_consumer(topic: str, task_name: str) -> None:
 
     # Now test that a read-only app can read that
     async with brrr.serve(queue, store, store) as conn:
-        appc = AppConsumer(codec=PickleCodec(), connection=conn)
+        appc = AppConsumer(codec=PickleCodec(), connection=conn, context=None)
         assert await appc.read(task_name)(5) == 25
         with pytest.raises(NotFoundError):
             await appc.read(task_name)(3)
@@ -90,11 +94,14 @@ async def test_local_brrr(topic: str, task_name: str) -> None:
         return 456
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         return await app.call(bar, topic=topic)(a + 1) + 1
 
     b = LocalBrrr(
-        topic=topic, handlers={name_foo: foo, name_bar: bar}, codec=PickleCodec()
+        topic=topic,
+        handlers={name_foo: foo, name_bar: bar},
+        codec=PickleCodec(),
+        context=None,
     )
     assert await b.run(foo)(122) == 457
 
@@ -119,12 +126,12 @@ async def _call_nested_gather(
         calls.append(f"bar({a})")
         return a - 1
 
-    async def not_a_brrr_task(app: ActiveWorker, a: int) -> int:
+    async def not_a_brrr_task(app: ActiveWorker[None], a: int) -> int:
         b = await app.call(foo)(a)
         return await app.call(bar)(b)
 
     @brrr.handler
-    async def top(app: ActiveWorker, xs: list[int]) -> list[int]:
+    async def top(app: ActiveWorker[None], xs: list[int]) -> list[int]:
         calls.append(f"top({xs})")
         gather = app.gather if use_brrr_gather else asyncio.gather
         result = await gather(*[not_a_brrr_task(app, x) for x in xs])
@@ -132,7 +139,7 @@ async def _call_nested_gather(
         return result
 
     handlers = dict(foo=foo, bar=bar, top=top)
-    b = LocalBrrr(topic=topic, handlers=handlers, codec=PickleCodec())
+    b = LocalBrrr(topic=topic, handlers=handlers, codec=PickleCodec(), context=None)
     await b.run(top)([3, 4])
 
     return calls
@@ -202,14 +209,18 @@ async def test_topics_separate_app_same_conn(topic: str, task_name: str) -> None
         return a + 5
 
     @brrr.handler
-    async def two(app: ActiveWorker, a: int) -> None:
+    async def two(app: ActiveWorker[None], a: int) -> None:
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
         await queue.close()
 
     async with brrr.serve(queue, store, store) as conn:
-        app1 = AppWorker(handlers={name_one: one}, codec=PickleCodec(), connection=conn)
-        app2 = AppWorker(handlers={name_two: two}, codec=PickleCodec(), connection=conn)
+        app1 = AppWorker(
+            handlers={name_one: one}, codec=PickleCodec(), connection=conn, context=None
+        )
+        app2 = AppWorker(
+            handlers={name_two: two}, codec=PickleCodec(), connection=conn, context=None
+        )
         await app2.schedule(name_two, topic=t2)(7)
         await asyncio.gather(conn.loop(t1, app1.handle), conn.loop(t2, app2.handle))
 
@@ -227,7 +238,7 @@ async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> 
         return a + 5
 
     @brrr.handler
-    async def two(app: ActiveWorker, a: int) -> None:
+    async def two(app: ActiveWorker[None], a: int) -> None:
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
         await queue.close()
@@ -235,10 +246,16 @@ async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> 
     async with brrr.serve(queue, store, store) as conn1:
         async with brrr.serve(queue, store, store) as conn2:
             app1 = AppWorker(
-                handlers={name_one: one}, codec=PickleCodec(), connection=conn1
+                handlers={name_one: one},
+                codec=PickleCodec(),
+                connection=conn1,
+                context=None,
             )
             app2 = AppWorker(
-                handlers={name_two: two}, codec=PickleCodec(), connection=conn2
+                handlers={name_two: two},
+                codec=PickleCodec(),
+                connection=conn2,
+                context=None,
             )
             await app2.schedule(name_two, topic=t2)(7)
             await asyncio.gather(
@@ -259,7 +276,7 @@ async def test_topics_same_app(topic: str, task_name) -> None:
         return a + 5
 
     @brrr.handler
-    async def two(app: ActiveWorker, a: int) -> None:
+    async def two(app: ActiveWorker[None], a: int) -> None:
         # N.B.: b2 can use its own brrr instance
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
@@ -270,6 +287,7 @@ async def test_topics_same_app(topic: str, task_name) -> None:
             handlers={name_one: one, name_two: two},
             codec=PickleCodec(),
             connection=conn,
+            context=None,
         )
         await app.schedule(name_two, topic=t2)(7)
         # Listen on different topics with the same worker.
@@ -289,7 +307,10 @@ async def test_weird_names(topic: str, task_name: str) -> None:
 
     async with brrr.serve(queue, store, store) as conn:
         app = AppWorker(
-            handlers={task_name: double}, codec=PickleCodec(), connection=conn
+            handlers={task_name: double},
+            codec=PickleCodec(),
+            connection=conn,
+            context=None,
         )
         await app.schedule(task_name, topic=topic)(7)
         queue.flush()
@@ -302,7 +323,7 @@ async def test_app_nop_closed_queue(topic: str) -> None:
     queue = InMemoryQueue([topic])
     await queue.close()
     async with brrr.serve(queue, store, store) as conn:
-        app = AppWorker(handlers={}, codec=PickleCodec(), connection=conn)
+        app = AppWorker(handlers={}, codec=PickleCodec(), connection=conn, context=None)
         await conn.loop(topic, app.handle)
         await conn.loop(topic, app.handle)
         await conn.loop(topic, app.handle)
@@ -316,7 +337,7 @@ async def test_stop_when_empty(topic: str, task_name: str) -> None:
     queue = InMemoryQueue([topic])
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         calls_pre[a] += 1
         if a == 0:
             return 0
@@ -325,7 +346,12 @@ async def test_stop_when_empty(topic: str, task_name: str) -> None:
         return res
 
     async with brrr.serve(queue, store, store) as conn:
-        app = AppWorker(handlers={task_name: foo}, codec=PickleCodec(), connection=conn)
+        app = AppWorker(
+            handlers={task_name: foo},
+            codec=PickleCodec(),
+            connection=conn,
+            context=None,
+        )
         await app.schedule(foo, topic=topic)(3)
         queue.flush()
         await conn.loop(topic, app.handle)
@@ -362,7 +388,7 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
         return a
 
     @brrr.handler
-    async def top(app: ActiveWorker) -> None:
+    async def top(app: ActiveWorker[None]) -> None:
         gather = app.gather if use_gather else asyncio.gather
         await gather(*(app.call(block)(x) for x in range(parallel)))
 
@@ -382,6 +408,7 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
             handlers={name_top: top, name_block: block},
             codec=PickleCodec(),
             connection=conn,
+            context=None,
         )
         # Don’t use queue.flush() because this test uses parallel workers
         await app.schedule(top, topic=topic)()
@@ -396,7 +423,7 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
     name_top, name_fib = names(task_name, ("top", "fib"))
 
     @brrr.handler
-    async def fib(app: ActiveWorker, a: int) -> int:
+    async def fib(app: ActiveWorker[None], a: int) -> int:
         if a < 2:
             return a
         return sum(
@@ -407,7 +434,7 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
         )
 
     @brrr.handler
-    async def top(app: ActiveWorker) -> None:
+    async def top(app: ActiveWorker[None]) -> None:
         n = await app.call(fib)(1000)
         assert (
             n
@@ -419,6 +446,7 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
             handlers={name_top: top, name_fib: fib},
             codec=PickleCodec(),
             connection=conn,
+            context=None,
         )
         await app.schedule(top, topic=topic)()
 
@@ -438,14 +466,16 @@ async def test_debounce_child(topic: str, task_name: str) -> None:
     calls = Counter[int]()
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         calls[a] += 1
         if a == 0:
             return a
 
         return sum(await app.gather(*map(app.call(foo), [a - 1] * 50)))
 
-    b = LocalBrrr(topic=topic, handlers={task_name: foo}, codec=PickleCodec())
+    b = LocalBrrr(
+        topic=topic, handlers={task_name: foo}, codec=PickleCodec(), context=None
+    )
     await b.run(foo)(3)
 
     assert calls == Counter({0: 1, 1: 2, 2: 2, 3: 2})
@@ -462,12 +492,14 @@ async def test_no_debounce_parent(topic: str) -> None:
         return 1
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         calls["foo"] += 1
         # Different argument to avoid debouncing children
         return sum(await app.gather(*map(app.call(one), range(a))))
 
-    b = LocalBrrr(topic=topic, handlers=dict(one=one, foo=foo), codec=PickleCodec())
+    b = LocalBrrr(
+        topic=topic, handlers=dict(one=one, foo=foo), codec=PickleCodec(), context=None
+    )
     await b.run(foo)(50)
 
     # We want foo=2 here
@@ -493,7 +525,9 @@ async def test_app_loop_resumable(topic: str) -> None:
         return a
 
     async with brrr.serve(queue, store, store) as conn:
-        app = AppWorker(handlers=dict(foo=foo), codec=PickleCodec(), connection=conn)
+        app = AppWorker(
+            handlers=dict(foo=foo), codec=PickleCodec(), connection=conn, context=None
+        )
         while True:
             try:
                 await app.schedule(foo, topic=topic)(3)
@@ -527,7 +561,7 @@ async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
         return a
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         return await app.call(bar)(a)
 
     async with brrr.serve(queue, store, store) as conn:
@@ -535,6 +569,7 @@ async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
             handlers={name_foo: foo, name_bar: bar},
             codec=PickleCodec(),
             connection=conn,
+            context=None,
         )
         while True:
             try:
@@ -556,7 +591,7 @@ async def test_app_handler_names(topic: str, task_name: str) -> None:
         return a * a
 
     @brrr.handler
-    async def bar(app: ActiveWorker, a: int) -> int:
+    async def bar(app: ActiveWorker[None], a: int) -> int:
         # Both are the same.
         return await app.call(foo)(a) * cast(int, await app.call(name_foo)(a))
 
@@ -564,7 +599,9 @@ async def test_app_handler_names(topic: str, task_name: str) -> None:
         name_foo: foo,
         name_bar: bar,
     }
-    async with local_app(topic=topic, handlers=handlers, codec=PickleCodec()) as app:
+    async with local_app(
+        topic=topic, handlers=handlers, codec=PickleCodec(), context=None
+    ) as app:
         await app.schedule(name_bar)(4)
         await app.run()
         assert await app.read(name_foo)(4) == 16
@@ -584,12 +621,12 @@ async def test_app_subclass(topic: str) -> None:
         return a + 10
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         return await app.call(bar)(a)
 
     # Hijack any defers and change them to a different task.  Just to prove a
     # point about middleware, nothing particularly realistic.
-    class MyAppWorker(AppWorker):
+    class MyAppWorker(AppWorker[None]):
         async def handle(self, request: Request, conn: Connection) -> Response | Defer:
             resp = await super().handle(request, conn)
             if isinstance(resp, Response):
@@ -606,8 +643,47 @@ async def test_app_subclass(topic: str) -> None:
 
     handlers = dict(foo=foo, bar=bar, baz=baz)
     async with brrr.serve(queue, store, store) as conn:
-        app = MyAppWorker(handlers=handlers, codec=PickleCodec(), connection=conn)
+        app = MyAppWorker(
+            handlers=handlers, codec=PickleCodec(), connection=conn, context=None
+        )
         await app.schedule(foo, topic=topic)(4)
         queue.flush()
         await conn.loop(topic, app.handle)
         assert await app.read(foo)(4) == 14
+
+
+async def test_app_context(topic: str, task_name: str) -> None:
+    store = InMemoryByteStore()
+    queue = InMemoryQueue([topic])
+
+    @brrr.handler
+    async def foo(app: ActiveWorker[str], a: int) -> str:
+        return f"{app.get_context()}:{a}"
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={task_name: foo},
+            codec=PickleCodec(),
+            connection=conn,
+            context="my_context",
+        )
+        await app.schedule(task_name, topic=topic)(42)
+        queue.flush()
+        await conn.loop(topic, app.handle)
+        assert await app.read(task_name)(42) == "my_context:42"
+
+
+async def test_local_app_context(topic: str, task_name: str) -> None:
+    @brrr.handler
+    async def foo(app: ActiveWorker[str], a: int) -> str:
+        return f"{app.get_context()}:{a}"
+
+    async with local_app(
+        topic=topic,
+        handlers={task_name: foo},
+        codec=PickleCodec(),
+        context="local_context",
+    ) as app:
+        await app.schedule(task_name)(7)
+        await app.run()
+        assert await app.read(task_name)(7) == "local_context:7"

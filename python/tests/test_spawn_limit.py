@@ -15,7 +15,7 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
     n = 0
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         nonlocal n
         n += 1
         if a == 0:
@@ -25,7 +25,12 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
 
     async with brrr.serve(queue, store, store) as conn:
         conn._spawn_limit = 100
-        app = AppWorker(handlers={task_name: foo}, codec=PickleCodec(), connection=conn)
+        app = AppWorker(
+            handlers={task_name: foo},
+            codec=PickleCodec(),
+            connection=conn,
+            context=None,
+        )
         await app.schedule(task_name, topic=topic)(conn._spawn_limit + 3)
         queue.flush()
 
@@ -38,7 +43,7 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
 async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
     queue = InMemoryQueue([topic])
     store = InMemoryByteStore()
-    calls = Counter()
+    calls = Counter[str]()
     name_one, name_foo = names(task_name, ("one", "foo"))
 
     @brrr.handler_no_arg
@@ -47,7 +52,7 @@ async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
         return 1
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         calls["foo"] += 1
         # Pass a different argument to avoid the debouncer
         return sum(await app.gather(*map(app.call(one), range(a))))
@@ -58,6 +63,7 @@ async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
             handlers={name_foo: foo, name_one: one},
             codec=PickleCodec(),
             connection=conn,
+            context=None,
         )
         await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 4)
         queue.flush()
@@ -79,7 +85,7 @@ async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
         return 1
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         # Pass a different argument to avoid the debouncer
         return sum(await app.gather(*map(app.call(one), range(a))))
 
@@ -91,6 +97,7 @@ async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
             handlers={name_foo: foo, name_one: one},
             codec=PickleCodec(),
             connection=conn,
+            context=None,
         )
 
         while True:
@@ -112,7 +119,7 @@ async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
 async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
     queue = InMemoryQueue([topic])
     store = InMemoryByteStore()
-    calls = Counter()
+    calls = Counter[str]()
     name_one, name_foo = names(task_name, ("one", "foo"))
 
     @brrr.handler_no_arg
@@ -121,7 +128,7 @@ async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
         return 1
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         calls["foo"] += 1
         total = 0
         for i in range(a):
@@ -136,6 +143,7 @@ async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
             handlers={name_foo: foo, name_one: one},
             codec=PickleCodec(),
             connection=conn,
+            context=None,
         )
         await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 3)
         queue.flush()
@@ -161,7 +169,7 @@ async def test_spawn_limit_cached(topic: str, task_name: str) -> None:
         return a
 
     @brrr.handler
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: ActiveWorker[None], a: int) -> int:
         val = sum(await app.gather(*map(app.call(same), [1] * a)))
         nonlocal final
         final = val
@@ -173,6 +181,7 @@ async def test_spawn_limit_cached(topic: str, task_name: str) -> None:
             handlers={name_foo: foo, name_same: same},
             codec=PickleCodec(),
             connection=conn,
+            context=None,
         )
         await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 5)
         queue.flush()
