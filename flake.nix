@@ -221,9 +221,6 @@
                   meta.mainProgram = "brrr_demo.py";
                 };
                 brrr-demo-ts = brrrts.overrideAttrs { meta.mainProgram = "brrr-demo"; };
-                # Best-effort package for convenience, zero guarantees, could
-                # disappear at any time.
-                nix-flake-check-changed = pkgs.callPackage ./nix-flake-check-changed/package.nix { };
               };
               checks =
                 docsync.tests
