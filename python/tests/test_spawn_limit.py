@@ -38,7 +38,7 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
 async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
     queue = InMemoryQueue([topic])
     store = InMemoryByteStore()
-    calls = Counter()
+    calls = Counter[str]()
     name_one, name_foo = names(task_name, ("one", "foo"))
 
     @brrr.handler_no_arg
@@ -112,7 +112,7 @@ async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
 async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
     queue = InMemoryQueue([topic])
     store = InMemoryByteStore()
-    calls = Counter()
+    calls = Counter[str]()
     name_one, name_foo = names(task_name, ("one", "foo"))
 
     @brrr.handler_no_arg
