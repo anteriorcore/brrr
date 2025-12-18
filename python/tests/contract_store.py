@@ -2,7 +2,7 @@ import dataclasses
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Awaitable, Callable
+from typing import AsyncContextManager, Awaitable, Callable, Iterable
 
 import pytest
 from brrr.call import Call
@@ -22,12 +22,7 @@ class FakeError(Exception):
 
 class ByteStoreContract(ABC):
     @abstractmethod
-    @asynccontextmanager  # type: ignore[arg-type]
-    async def with_store(self) -> AsyncIterator[Store]:
-        """
-        This should return a fresh, empty store instance
-        """
-        raise NotImplementedError()
+    def with_store(self) -> AsyncContextManager[Store]: ...
 
     # There are tests in this file which require read-after-write consistency.
     # Technically that’s not actually required by brrr, nor by the datastores.
@@ -119,7 +114,7 @@ class ByteStoreContract(ABC):
             await store.set(a2, b"value-2")
             await store.set(b1, b"value-3")
 
-            async def r1():
+            async def r1() -> None:
                 assert await store.get(a1) == b"value-1"
                 assert await store.get(a2) == b"value-2"
                 assert await store.get(b1) == b"value-3"
@@ -178,7 +173,7 @@ class ByteStoreContract(ABC):
 
             await store.set(a1, b"value-1")
 
-            async def r1():
+            async def r1() -> None:
                 assert await store.get(a1) == b"value-1"
 
             await self.read_after_write(r1)
@@ -282,10 +277,10 @@ class MemoryContract(ByteStoreContract):
 
             await self.read_after_write(r2)
 
-    async def test_pending_returns(self, topic) -> None:
+    async def test_pending_returns(self, topic: str) -> None:
         async with self.with_memory() as memory:
 
-            async def body(keys) -> None:
+            async def body(keys: Iterable[PendingReturn]) -> None:
                 assert not keys
 
             await memory.with_pending_returns_remove("key", body)
@@ -316,18 +311,18 @@ class MemoryContract(ByteStoreContract):
 
             with pytest.raises(FakeError):
 
-                async def body(keys) -> None:
+                async def body(keys: Iterable[PendingReturn]) -> None:
                     assert set(keys) == {one, two, three, four, five}
                     raise FakeError()
 
                 await memory.with_pending_returns_remove("key", body)
 
-            async def body2(keys) -> None:
+            async def body2(keys: Iterable[PendingReturn]) -> None:
                 assert set(keys) == {one, two, three, four, five}
 
             await memory.with_pending_returns_remove("key", body2)
 
-            async def body3(keys) -> None:
+            async def body3(keys: Iterable[PendingReturn]) -> None:
                 assert not keys
 
             async def r1() -> None:

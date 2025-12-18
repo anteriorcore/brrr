@@ -30,7 +30,7 @@ let
                 name = "brrr-mypy";
                 buildPhase = ''
                   runHook preBuild
-                  mypy src
+                  mypy .
                   runHook postBuild
                 '';
                 installPhase = ''

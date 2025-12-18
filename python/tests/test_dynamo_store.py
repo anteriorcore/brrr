@@ -37,7 +37,7 @@ class TestDynamoByteStoreUnit:
         mock_client.get_item.return_value = mock_get_output
 
         mock_dynamo_mem_store = DynamoDbMemStore(mock_client, "table")
-        mock_key = MemKey("type", "call_hash")
+        mock_key = MemKey("type", "call_hash")  # type: ignore[arg-type]
         await mock_dynamo_mem_store.get_with_retry(mock_key)
 
         assert mock_client.get_item.call_count == 1
@@ -46,7 +46,7 @@ class TestDynamoByteStoreUnit:
         )
 
     async def test_get__not_found__retry(self) -> None:
-        mock_mem_key = MemKey("type", "call_hash")
+        mock_mem_key = MemKey("type", "call_hash")  # type: ignore[arg-type]
         mock_get_output = {"Item": {"value": {"B": ""}}}
 
         mock_client = AsyncMock()
@@ -57,7 +57,7 @@ class TestDynamoByteStoreUnit:
         ]
 
         mock_dynamo_mem_store = DynamoDbMemStore(mock_client, "table")
-        mock_key = MemKey("type", "call_hash")
+        mock_key = MemKey("type", "call_hash")  # type: ignore[arg-type]
         await mock_dynamo_mem_store.get_with_retry(mock_key)
 
         assert mock_client.get_item.call_count == 3
@@ -82,4 +82,4 @@ class TestDynamoByteStoreUnit:
         mock_dynamo_mem_store = DynamoDbMemStore(mock_client, "table")
 
         with pytest.raises(KeyError):
-            await mock_dynamo_mem_store.get_with_retry(MemKey("type", "call_hash"))
+            await mock_dynamo_mem_store.get_with_retry(MemKey("type", "call_hash"))  # type: ignore[arg-type]

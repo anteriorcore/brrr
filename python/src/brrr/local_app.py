@@ -68,7 +68,9 @@ class LocalBrrr:
         self.handlers = handlers
         self.codec = codec
 
-    def run[**P, R](self, f: WrappedTaskT[..., P, R]) -> Callable[P, Awaitable[R]]:
+    def run[**P, R](
+        self, f: WrappedTaskT[..., P, R] | str
+    ) -> Callable[P, Awaitable[R]]:
         """Create an ephemeral brrr app and runt his entire task to completion.
 
         Named `run' to emphasize this is different from app.call.  This isn't

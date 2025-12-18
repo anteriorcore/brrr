@@ -248,7 +248,7 @@ async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> 
     await queue.join()
 
 
-async def test_topics_same_app(topic: str, task_name) -> None:
+async def test_topics_same_app(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     t1, t2 = names(topic, ("1", "2"))
     queue = InMemoryQueue([t1, t2])
