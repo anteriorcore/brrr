@@ -44,12 +44,17 @@
       inputs.treefmt-nix.follows = "treefmt-nix";
     };
     treefmt-nix.url = "github:numtide/treefmt-nix";
+    anterior-tools = {
+      url = "github:anteriorcore/tools";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.treefmt-nix.follows = "treefmt-nix";
+      inputs.flake-parts.follows = "flake-parts";
+    };
   };
 
   outputs =
     { self, flake-parts, ... }@inputs:
     let
-      checkBuildAll = import ./nix/check-build-all.nix;
       # flake.parts module for linux systems
       brrrLinux = {
         perSystem =
@@ -78,10 +83,7 @@
       # flake.parts module for any system
       brrrAllSystems = {
         flake = {
-          # Expose for reuse.  Name and availability subject to change.
-          flakeModules = { inherit checkBuildAll; };
           # A reusable process-compose module (for flake-parts) with either a full
-
           # demo environment, or just the dependencies if you want to run a server
           # manually.
           processComposeModules = {
@@ -221,9 +223,6 @@
                   meta.mainProgram = "brrr_demo.py";
                 };
                 brrr-demo-ts = brrrts.overrideAttrs { meta.mainProgram = "brrr-demo"; };
-                # Best-effort package for convenience, zero guarantees, could
-                # disappear at any time.
-                nix-flake-check-changed = pkgs.callPackage ./nix-flake-check-changed/package.nix { };
               };
               checks =
                 docsync.tests
@@ -374,7 +373,7 @@
         inputs.treefmt-nix.flakeModule
         brrrLinux
         brrrAllSystems
-        checkBuildAll
+        inputs.anterior-tools.flakeModules.checkBuildAll
       ];
     };
 }
