@@ -12,7 +12,7 @@ from tests.contract_queue import QueueContract
 
 
 @asynccontextmanager
-async def with_redis(redurl: str | None) -> AsyncIterator[redis.Redis]:
+async def with_redis(redurl: str | None) -> AsyncIterator[redis.Redis]:  # type: ignore[type-arg]
     rkwargs = dict(
         health_check_interval=10,
         socket_connect_timeout=5,
@@ -21,7 +21,7 @@ async def with_redis(redurl: str | None) -> AsyncIterator[redis.Redis]:
         protocol=3,
     )
     if redurl is None:
-        rc = redis.Redis(**rkwargs)
+        rc = redis.Redis(**rkwargs)  # type: ignore[call-overload]
     else:
         rc = redis.from_url(redurl, **rkwargs)
 

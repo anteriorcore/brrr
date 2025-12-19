@@ -15,30 +15,30 @@ class FlakyStore(InMemoryByteStore):
     # fail every other CAS operation
     fail_cas: bool
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.fail_cas = True
 
-    async def set_new_value(self, key: MemKey, value: bytes):
+    async def set_new_value(self, key: MemKey, value: bytes) -> None:
         self.fail_cas = not self.fail_cas
         if not self.fail_cas:
             raise CompareMismatch()
         return await super().set_new_value(key, value)
 
-    async def compare_and_set(self, key: MemKey, value: bytes, expected: bytes):
+    async def compare_and_set(self, key: MemKey, value: bytes, expected: bytes) -> None:
         self.fail_cas = not self.fail_cas
         if not self.fail_cas:
             raise CompareMismatch()
         return await super().compare_and_set(key, value, expected)
 
-    async def compare_and_delete(self, key: MemKey, expected: bytes):
+    async def compare_and_delete(self, key: MemKey, expected: bytes) -> None:
         self.fail_cas = not self.fail_cas
         if not self.fail_cas:
             raise CompareMismatch()
         return await super().compare_and_delete(key, expected)
 
 
-async def test_memory_cas():
+async def test_memory_cas() -> None:
     store = FlakyStore()
     memory = Memory(store)
     key = MemKey("value", "bar")

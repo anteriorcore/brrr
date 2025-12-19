@@ -75,7 +75,7 @@ async def test_codec_api() -> None:
             await app.call(plus)(1, "2")
             + await app.call(plus)(x=3, y="4")
             + await app.call(plus)(*(5, "6"))
-            + await app.call(plus)(**dict(x=7, y="8"))
+            + await app.call(plus)(**dict(x=7, y="8"))  # type: ignore[arg-type]
         )
         assert val == sum(range(9))
         return val
