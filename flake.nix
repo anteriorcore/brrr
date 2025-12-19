@@ -1,4 +1,4 @@
-# Copyright © 2024  Brrr Authors
+# Copyright © 2024, 2025  Brrr Authors
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published
@@ -14,7 +14,7 @@
 
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
     systems.url = "systems";
     flake-parts.url = "github:hercules-ci/flake-parts";
     devshell.url = "github:numtide/devshell";
@@ -44,12 +44,17 @@
       inputs.treefmt-nix.follows = "treefmt-nix";
     };
     treefmt-nix.url = "github:numtide/treefmt-nix";
+    anterior-tools = {
+      url = "github:anteriorcore/tools";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.treefmt-nix.follows = "treefmt-nix";
+      inputs.flake-parts.follows = "flake-parts";
+    };
   };
 
   outputs =
     { self, flake-parts, ... }@inputs:
     let
-      checkBuildAll = import ./nix/check-build-all.nix;
       # flake.parts module for linux systems
       brrrLinux = {
         perSystem =
@@ -78,10 +83,7 @@
       # flake.parts module for any system
       brrrAllSystems = {
         flake = {
-          # Expose for reuse.  Name and availability subject to change.
-          flakeModules = { inherit checkBuildAll; };
           # A reusable process-compose module (for flake-parts) with either a full
-
           # demo environment, or just the dependencies if you want to run a server
           # manually.
           processComposeModules = {
@@ -107,6 +109,7 @@
                       AWS_ACCESS_KEY_ID = "000000000000";
                       AWS_SECRET_ACCESS_KEY = "fake";
                     };
+                    inherit (pkgs.stdenv.hostPlatform) system;
                   in
                   {
                     redis.r1.enable = true;
@@ -115,17 +118,17 @@
                       args = [ "-disableTelemetry" ];
                     };
                     brrr-demo.server = {
-                      package = self.packages.${pkgs.system}.brrr-demo-py;
+                      package = self.packages.${system}.brrr-demo-py;
                       args = [ "web_server" ];
                       environment = demoEnv;
                     };
                     brrr-demo.worker-py = {
-                      package = self.packages.${pkgs.system}.brrr-demo-py;
+                      package = self.packages.${system}.brrr-demo-py;
                       args = [ "brrr_worker" ];
                       environment = demoEnv;
                     };
                     brrr-demo.worker-ts = {
-                      package = self.packages.${pkgs.system}.brrr-demo-ts;
+                      package = self.packages.${system}.brrr-demo-ts;
                       environment = demoEnv;
                     };
                   };
@@ -220,9 +223,6 @@
                   meta.mainProgram = "brrr_demo.py";
                 };
                 brrr-demo-ts = brrrts.overrideAttrs { meta.mainProgram = "brrr-demo"; };
-                # Best-effort package for convenience, zero guarantees, could
-                # disappear at any time.
-                nix-flake-check-changed = pkgs.callPackage ./nix-flake-check-changed/package.nix { };
               };
               checks =
                 docsync.tests
@@ -333,14 +333,6 @@
                             exec pytest "$@"
                           )'';
                       }
-                      {
-                        name = "brrr-demo-full";
-                        category = "demo";
-                        help = "Launch a full demo locally";
-                        command = ''
-                          nix run .#demo
-                        '';
-                      }
                     ]
                     ++ sharedCommands;
                   };
@@ -381,7 +373,7 @@
         inputs.treefmt-nix.flakeModule
         brrrLinux
         brrrAllSystems
-        checkBuildAll
+        inputs.anterior-tools.flakeModules.checkBuildAll
       ];
     };
 }

@@ -102,7 +102,7 @@ let
         networking.firewall.allowedTCPPorts = [ 8080 ];
         services.brrr-demo = {
           enable = true;
-          package = self.packages.${pkgs.system}.brrr-demo-py;
+          package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-py;
           args = [ "web_server" ];
           environment = demoEnvs;
         };
@@ -113,7 +113,7 @@ let
         imports = [ self.nixosModules.brrr-demo ];
         services.brrr-demo = {
           enable = true;
-          package = self.packages.${pkgs.system}.brrr-demo-py;
+          package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-py;
           args = [ "brrr_worker" ];
           environment = demoEnvs;
         };
@@ -124,7 +124,7 @@ let
         imports = [ self.nixosModules.brrr-demo ];
         services.brrr-demo = {
           enable = true;
-          package = self.packages.${pkgs.system}.brrr-demo-ts;
+          package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-ts;
           environment = demoEnvs;
         };
       };
@@ -139,7 +139,7 @@ let
         virtualisation.oci-containers.containers.brrr = {
           extraOptions = [ "--network=host" ];
           image = "brrr-demo-py:latest";
-          imageFile = self.packages.${pkgs.system}.docker-py;
+          imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-py;
           environment = demoEnvs;
           cmd = [ "web_server" ];
         };
@@ -152,7 +152,7 @@ let
         virtualisation.oci-containers.containers.brrr = {
           extraOptions = [ "--network=host" ];
           image = "brrr-demo-py:latest";
-          imageFile = self.packages.${pkgs.system}.docker-py;
+          imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-py;
           cmd = [ "brrr_worker" ];
           environment = demoEnvs;
         };
@@ -164,7 +164,7 @@ let
         virtualisation.oci-containers.containers.brrr-ts = {
           extraOptions = [ "--network=host" ];
           image = "brrr-demo-ts:latest";
-          imageFile = self.packages.${pkgs.system}.docker-ts;
+          imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-ts;
           environment = demoEnvs;
         };
       };
