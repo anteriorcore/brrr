@@ -14,7 +14,6 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     n = 0
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         nonlocal n
         n += 1
@@ -41,12 +40,10 @@ async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
     calls = Counter[str]()
     name_one, name_foo = names(task_name, ("one", "foo"))
 
-    @brrr.handler_no_arg
-    async def one(_: int) -> int:
+    async def one(app: ActiveWorker, _: int) -> int:
         calls["one"] += 1
         return 1
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         calls["foo"] += 1
         # Pass a different argument to avoid the debouncer
@@ -74,11 +71,9 @@ async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
     cache = InMemoryByteStore()
     name_one, name_foo = names(task_name, ("one", "foo"))
 
-    @brrr.handler_no_arg
-    async def one(_: int) -> int:
+    async def one(app: ActiveWorker, _: int) -> int:
         return 1
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         # Pass a different argument to avoid the debouncer
         return sum(await app.gather(*map(app.call(one), range(a))))
@@ -115,12 +110,10 @@ async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
     calls = Counter[str]()
     name_one, name_foo = names(task_name, ("one", "foo"))
 
-    @brrr.handler_no_arg
-    async def one(_: int) -> int:
+    async def one(app: ActiveWorker, _: int) -> int:
         calls["one"] += 1
         return 1
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         calls["foo"] += 1
         total = 0
@@ -154,13 +147,11 @@ async def test_spawn_limit_cached(topic: str, task_name: str) -> None:
     n = 0
     final = None
 
-    @brrr.handler_no_arg
-    async def same(a: int) -> int:
+    async def same(app: ActiveWorker, a: int) -> int:
         nonlocal n
         n += 1
         return a
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         val = sum(await app.gather(*map(app.call(same), [1] * a)))
         nonlocal final

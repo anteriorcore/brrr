@@ -2,7 +2,7 @@ import asyncio
 import dataclasses
 import typing
 from collections import Counter
-from typing import cast
+from typing import Any, cast
 
 import brrr
 import pytest
@@ -16,6 +16,7 @@ from brrr import (
     NotFoundError,
     Request,
     Response,
+    Task,
 )
 from brrr.backends.in_memory import InMemoryByteStore, InMemoryQueue
 from brrr.local_app import LocalBrrr, local_app
@@ -30,12 +31,10 @@ async def test_app_worker(topic: str, task_name: str) -> None:
 
     name_foo, name_bar = names(task_name, ("foo", "bar"))
 
-    @brrr.handler_no_arg
-    async def bar(a: int) -> int:
+    async def bar(app: ActiveWorker, a: int) -> int:
         assert a == 123
         return 456
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         return await app.call(bar, topic=topic)(a + 1) + 1
 
@@ -58,8 +57,7 @@ async def test_app_consumer(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = InMemoryQueue([topic])
 
-    @brrr.handler_no_arg
-    async def foo(a: int) -> int:
+    async def foo(app: ActiveWorker, a: int) -> int:
         return a * a
 
     # Seed the db with a known value
@@ -84,12 +82,10 @@ async def test_app_consumer(topic: str, task_name: str) -> None:
 async def test_local_brrr(topic: str, task_name: str) -> None:
     name_foo, name_bar = names(task_name, ("foo", "bar"))
 
-    @brrr.handler_no_arg
-    async def bar(a: int) -> int:
+    async def bar(app: ActiveWorker, a: int) -> int:
         assert a == 123
         return 456
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         return await app.call(bar, topic=topic)(a + 1) + 1
 
@@ -107,15 +103,12 @@ async def _call_nested_gather(
     in contrast with how asyncio.gather only runs one at a time.
     """
     calls = []
-    name_foo, name_bar, name_top = names(task_name, ("foo", "bar", "top"))
 
-    @brrr.handler_no_arg
-    async def foo(a: int) -> int:
+    async def foo(app: ActiveWorker, a: int) -> int:
         calls.append(f"foo({a})")
         return a * 2
 
-    @brrr.handler_no_arg
-    async def bar(a: int) -> int:
+    async def bar(app: ActiveWorker, a: int) -> int:
         calls.append(f"bar({a})")
         return a - 1
 
@@ -123,7 +116,6 @@ async def _call_nested_gather(
         b = await app.call(foo)(a)
         return await app.call(bar)(b)
 
-    @brrr.handler
     async def top(app: ActiveWorker, xs: list[int]) -> list[int]:
         calls.append(f"top({xs})")
         gather = app.gather if use_brrr_gather else asyncio.gather
@@ -131,7 +123,7 @@ async def _call_nested_gather(
         typing.assert_type(result, list[int])
         return result
 
-    handlers = dict(foo=foo, bar=bar, top=top)
+    handlers: dict[str, Task[..., Any]] = dict(foo=foo, bar=bar, top=top)
     b = LocalBrrr(topic=topic, handlers=handlers, codec=PickleCodec())
     await b.run(top)([3, 4])
 
@@ -197,11 +189,9 @@ async def test_topics_separate_app_same_conn(topic: str, task_name: str) -> None
     queue = InMemoryQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
-    @brrr.handler_no_arg
-    async def one(a: int) -> int:
+    async def one(app: ActiveWorker, a: int) -> int:
         return a + 5
 
-    @brrr.handler
     async def two(app: ActiveWorker, a: int) -> None:
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
@@ -222,11 +212,9 @@ async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> 
     queue = InMemoryQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
-    @brrr.handler_no_arg
-    async def one(a: int) -> int:
+    async def one(app: ActiveWorker, a: int) -> int:
         return a + 5
 
-    @brrr.handler
     async def two(app: ActiveWorker, a: int) -> None:
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
@@ -254,11 +242,9 @@ async def test_topics_same_app(topic: str, task_name: str) -> None:
     queue = InMemoryQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
-    @brrr.handler_no_arg
-    async def one(a: int) -> int:
+    async def one(app: ActiveWorker, a: int) -> int:
         return a + 5
 
-    @brrr.handler
     async def two(app: ActiveWorker, a: int) -> None:
         # N.B.: b2 can use its own brrr instance
         result = await app.call(name_one, topic=t1)(a + 3)
@@ -282,8 +268,7 @@ async def test_weird_names(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = InMemoryQueue([topic])
 
-    @brrr.handler_no_arg
-    async def double(x: int) -> int:
+    async def double(app: ActiveWorker, x: int) -> int:
         await queue.close()
         return x + x
 
@@ -315,7 +300,6 @@ async def test_stop_when_empty(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = InMemoryQueue([topic])
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         calls_pre[a] += 1
         if a == 0:
@@ -346,8 +330,7 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
 
     top_calls = 0
 
-    @brrr.handler_no_arg
-    async def block(a: int) -> int:
+    async def block(app: ActiveWorker, a: int) -> int:
         nonlocal barrier
         if barrier is not None:
             await barrier.wait()
@@ -361,7 +344,6 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
         barrier = None
         return a
 
-    @brrr.handler
     async def top(app: ActiveWorker) -> None:
         gather = app.gather if use_gather else asyncio.gather
         await gather(*(app.call(block)(x) for x in range(parallel)))
@@ -395,7 +377,6 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
 
     name_top, name_fib = names(task_name, ("top", "fib"))
 
-    @brrr.handler
     async def fib(app: ActiveWorker, a: int) -> int:
         if a < 2:
             return a
@@ -406,7 +387,6 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
             )
         )
 
-    @brrr.handler
     async def top(app: ActiveWorker) -> None:
         n = await app.call(fib)(1000)
         assert (
@@ -437,7 +417,6 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
 async def test_debounce_child(topic: str, task_name: str) -> None:
     calls = Counter[int]()
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         calls[a] += 1
         if a == 0:
@@ -456,12 +435,10 @@ async def test_debounce_child(topic: str, task_name: str) -> None:
 async def test_no_debounce_parent(topic: str) -> None:
     calls = Counter[str]()
 
-    @brrr.handler_no_arg
-    async def one(_: int) -> int:
+    async def one(app: ActiveWorker, _: int) -> int:
         calls["one"] += 1
         return 1
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         calls["foo"] += 1
         # Different argument to avoid debouncing children
@@ -483,8 +460,7 @@ async def test_app_loop_resumable(topic: str) -> None:
     class MyError(Exception):
         pass
 
-    @brrr.handler_no_arg
-    async def foo(a: int) -> int:
+    async def foo(app: ActiveWorker, a: int) -> int:
         nonlocal errors
         if errors:
             errors -= 1
@@ -518,15 +494,13 @@ async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
     class MyError(Exception):
         pass
 
-    @brrr.handler_no_arg
-    async def bar(a: int) -> int:
+    async def bar(app: ActiveWorker, a: int) -> int:
         nonlocal errors
         if errors:
             errors -= 1
             raise MyError("retry")
         return a
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         return await app.call(bar)(a)
 
@@ -551,16 +525,14 @@ async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
 async def test_app_handler_names(topic: str, task_name: str) -> None:
     name_foo, name_bar = names(task_name, ("foo", "bar"))
 
-    @brrr.handler_no_arg
-    async def foo(a: int) -> int:
+    async def foo(app: ActiveWorker, a: int) -> int:
         return a * a
 
-    @brrr.handler
     async def bar(app: ActiveWorker, a: int) -> int:
         # Both are the same.
         return await app.call(foo)(a) * cast(int, await app.call(name_foo)(a))
 
-    handlers = {
+    handlers: dict[str, Task[..., Any]] = {
         name_foo: foo,
         name_bar: bar,
     }
@@ -575,15 +547,12 @@ async def test_app_subclass(topic: str) -> None:
     store = InMemoryByteStore()
     queue = InMemoryQueue([topic])
 
-    @brrr.handler_no_arg
-    async def bar(a: int) -> int:
+    async def bar(app: ActiveWorker, a: int) -> int:
         return a + 1
 
-    @brrr.handler_no_arg
-    async def baz(a: int) -> int:
+    async def baz(app: ActiveWorker, a: int) -> int:
         return a + 10
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         return await app.call(bar)(a)
 
