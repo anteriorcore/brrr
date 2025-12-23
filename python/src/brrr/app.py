@@ -9,14 +9,14 @@ from collections.abc import (
     Mapping,
     Sequence,
 )
-from typing import Any, Concatenate, overload
+from typing import Any, Concatenate, Self, overload
 
 from brrr.store import NotFoundError
 
 from .codec import Codec
 from .connection import Connection, Defer, DeferredCall, Request, Response
 
-type Task[**P, R] = Callable[Concatenate[ActiveWorker, P], Coroutine[Any, Any, R]]
+type Task[**P, R, A] = Callable[Concatenate[A, P], Coroutine[Any, Any, R]]
 
 
 class NotInBrrrError(Exception):
@@ -32,25 +32,25 @@ def _val2key[K, V](d: Mapping[K, V], val: V) -> K:
     raise KeyError(val)
 
 
-class TaskCollection(UserDict[str, Task[..., Any]]):
-    def task2name(self, task: Task[..., Any]) -> str:
+class TaskCollection[A](UserDict[str, Task[..., Any, A]]):
+    def task2name(self, task: Task[..., Any, A]) -> str:
         return _val2key(self, task)
 
-    def spec2name(self, spec: str | Task[..., Any]) -> str:
+    def spec2name(self, spec: str | Task[..., Any, A]) -> str:
         return spec if isinstance(spec, str) else self.task2name(spec)
 
 
-class AppConsumer:
+class AppConsumer[A]:
     _codec: Codec
     _connection: Connection
-    tasks: TaskCollection
+    tasks: TaskCollection[A]
 
     def __init__(
         self,
         codec: Codec,
         connection: Connection,
-        handlers: Mapping[str, Task[..., Any]] | None = None,
-    ):
+        handlers: Mapping[str, Task[..., Any, A]] | None = None,
+    ) -> None:
         self._codec = codec
         self._connection = connection
         self.tasks = TaskCollection(**(handlers or {}))
@@ -58,7 +58,7 @@ class AppConsumer:
     @overload
     def schedule[**P, R](
         self,
-        task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]],
+        task_spec: Callable[Concatenate[A, P], Awaitable[R]],
         *,
         topic: str,
     ) -> Callable[P, Awaitable[None]]: ...
@@ -87,7 +87,7 @@ class AppConsumer:
 
     @overload
     def read[**P, R](
-        self, task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]]
+        self, task_spec: Callable[Concatenate[A, P], Awaitable[R]]
     ) -> Callable[P, Awaitable[R]]: ...
     @overload
     def read[**P, R](
@@ -106,17 +106,50 @@ class AppConsumer:
         return f
 
 
-class AppWorker(AppConsumer):
-    async def handle(self, request: Request, conn: Connection) -> Response | Defer:
+class AppWorker[A](AppConsumer[A]):
+    @overload
+    def __init__(
+        self: AppWorker[ActiveWorker],
+        codec: Codec,
+        connection: Connection,
+        *,
+        handlers: Mapping[str, Task[..., Any, A]] | None = None,
+        active_worker_init: None = None,
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        codec: Codec,
+        connection: Connection,
+        *,
+        handlers: Mapping[str, Task[..., Any, A]] | None = None,
+        active_worker_init: Callable[[Connection, Codec, TaskCollection[A]], A],
+    ) -> None: ...
+
+    def __init__(
+        self,
+        codec: Codec,
+        connection: Connection,
+        *,
+        handlers: Mapping[str, Task[..., Any, A]] | None = None,
+        active_worker_init: Callable[[Connection, Codec, TaskCollection[A]], A]
+        | None = None,
+    ) -> None:
+        super().__init__(codec, connection, handlers=handlers)
+        self._active_worker_init = active_worker_init or ActiveWorker.__call__
+
+    async def handle(
+        self,
+        request: Request,
+        conn: Connection,
+    ) -> Response | Defer:
         """Glue between this class and the underlying Connection.loop handler"""
         task_name = request.call.task_name
         # This is such an odd place to be wrapping this... the carpet keeps
         # bubbling up somewhere and no matter how often I push it down, it pops
         # up somewhere else.
-        handler = functools.partial(
-            self.tasks[task_name],
-            ActiveWorker(conn, self._codec, self.tasks),
-        )
+        active_worker = self._active_worker_init(conn, self._codec, self.tasks)
+        handler = functools.partial(self.tasks[task_name], active_worker)
         try:
             resp = await self._codec.invoke_task(request.call, handler)
         except Defer as e:
@@ -127,9 +160,9 @@ class AppWorker(AppConsumer):
 class ActiveWorker:
     _connection: Connection
     _codec: Codec
-    _handlers: TaskCollection
+    _handlers: TaskCollection[Self]
 
-    def __init__(self, conn: Connection, codec: Codec, tasks: TaskCollection):
+    def __init__(self, conn: Connection, codec: Codec, tasks: TaskCollection[Self]):
         self._connection = conn
         self._codec = codec
         self._handlers = tasks
@@ -137,7 +170,7 @@ class ActiveWorker:
     @overload
     def call[**P, R](
         self,
-        task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]],
+        task_spec: Callable[Concatenate[Self, P], Awaitable[R]],
         *,
         topic: str | None = None,
     ) -> Callable[P, Awaitable[R]]: ...

@@ -2,7 +2,7 @@ import asyncio
 import dataclasses
 import typing
 from collections import Counter
-from typing import Any, cast
+from typing import Any, Self, cast
 
 import brrr
 import pytest
@@ -18,7 +18,9 @@ from brrr import (
     Response,
     Task,
 )
+from brrr.app import TaskCollection
 from brrr.backends.in_memory import InMemoryByteStore, InMemoryQueue
+from brrr.codec import Codec
 from brrr.local_app import LocalBrrr, local_app
 from brrr.pickle_codec import PickleCodec
 
@@ -71,7 +73,7 @@ async def test_app_consumer(topic: str, task_name: str) -> None:
 
     # Now test that a read-only app can read that
     async with brrr.serve(queue, store, store) as conn:
-        appc = AppConsumer(codec=PickleCodec(), connection=conn)
+        appc = AppConsumer[ActiveWorker](codec=PickleCodec(), connection=conn)
         assert await appc.read(task_name)(5) == 25
         with pytest.raises(NotFoundError):
             await appc.read(task_name)(3)
@@ -123,7 +125,7 @@ async def _call_nested_gather(
         typing.assert_type(result, list[int])
         return result
 
-    handlers: dict[str, Task[..., Any]] = dict(foo=foo, bar=bar, top=top)
+    handlers: dict[str, Task[..., Any, ActiveWorker]] = dict(foo=foo, bar=bar, top=top)
     b = LocalBrrr(topic=topic, handlers=handlers, codec=PickleCodec())
     await b.run(top)([3, 4])
 
@@ -287,7 +289,7 @@ async def test_app_nop_closed_queue(topic: str) -> None:
     queue = InMemoryQueue([topic])
     await queue.close()
     async with brrr.serve(queue, store, store) as conn:
-        app = AppWorker(handlers={}, codec=PickleCodec(), connection=conn)
+        app = AppWorker[ActiveWorker](handlers={}, codec=PickleCodec(), connection=conn)
         await conn.loop(topic, app.handle)
         await conn.loop(topic, app.handle)
         await conn.loop(topic, app.handle)
@@ -360,7 +362,7 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
             await queue.close()
 
     async with brrr.serve(queue, store, store) as conn:
-        app = AppWorker(
+        app = AppWorker[ActiveWorker](
             handlers={name_top: top, name_block: block},
             codec=PickleCodec(),
             connection=conn,
@@ -395,7 +397,7 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
         )
 
     async with brrr.serve(queue, store, store) as conn:
-        app = AppWorker(
+        app = AppWorker[ActiveWorker](
             handlers={name_top: top, name_fib: fib},
             codec=PickleCodec(),
             connection=conn,
@@ -532,7 +534,7 @@ async def test_app_handler_names(topic: str, task_name: str) -> None:
         # Both are the same.
         return await app.call(foo)(a) * cast(int, await app.call(name_foo)(a))
 
-    handlers: dict[str, Task[..., Any]] = {
+    handlers: dict[str, Task[..., Any, ActiveWorker]] = {
         name_foo: foo,
         name_bar: bar,
     }
@@ -558,8 +560,11 @@ async def test_app_subclass(topic: str) -> None:
 
     # Hijack any defers and change them to a different task.  Just to prove a
     # point about middleware, nothing particularly realistic.
-    class MyAppWorker(AppWorker):
-        async def handle(self, request: Request, conn: Connection) -> Response | Defer:
+    class MyAppWorker(AppWorker[ActiveWorker]):
+        @typing.override
+        async def handle(
+            self, request: Request, conn: Connection, active_worker_init: Any = None
+        ) -> Response | Defer:
             resp = await super().handle(request, conn)
             if isinstance(resp, Response):
                 return resp
@@ -580,3 +585,62 @@ async def test_app_subclass(topic: str) -> None:
         queue.flush()
         await conn.loop(topic, app.handle)
         assert await app.read(foo)(4) == 14
+
+
+async def test_active_worker_subclass(topic: str) -> None:
+    store = InMemoryByteStore()
+    queue = InMemoryQueue([topic])
+
+    class MyActiveWorker(ActiveWorker):
+        def __init__(
+            self, conn: Connection, codec: Codec, tasks: TaskCollection[Self]
+        ) -> None:
+            super().__init__(conn, codec, tasks)
+            self.counter = 10
+
+    async def foo(app: MyActiveWorker, a: int) -> int:
+        app.counter += 1
+        return a + app.counter
+
+    async with brrr.serve(queue, store, store) as conn:
+        handlers = {"foo": foo}
+        app = AppWorker(
+            handlers=handlers,
+            codec=PickleCodec(),
+            connection=conn,
+            active_worker_init=MyActiveWorker,
+        )
+        await app.schedule(foo, topic=topic)(4)
+        queue.flush()
+        await conn.loop(topic, app.handle)
+        assert await app.read(foo)(4) == 15
+
+
+async def test_active_worker_subclass_type_error(topic: str) -> None:
+    store = InMemoryByteStore()
+    queue = InMemoryQueue([topic])
+
+    class MyActiveWorker(ActiveWorker):
+        def __init__(
+            self, conn: Connection, codec: Codec, tasks: TaskCollection[Self]
+        ) -> None:
+            super().__init__(conn, codec, tasks)
+            self.counter = 10
+
+    async def foo(app: MyActiveWorker, a: int) -> int:
+        app.counter += 1
+        return a + app.counter
+
+    async with brrr.serve(queue, store, store) as conn:
+        handlers = {"foo": foo}
+        app = AppWorker(
+            handlers=handlers,
+            codec=PickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(foo, topic=topic)(4)  # type: ignore[call-arg, arg-type]
+        queue.flush()
+        with pytest.raises(AttributeError):
+            await conn.loop(topic, app.handle)
+        with pytest.raises(NotFoundError):
+            await app.read(foo)(4)  # type: ignore[call-arg, arg-type]
