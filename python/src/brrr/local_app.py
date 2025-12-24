@@ -1,21 +1,23 @@
+from __future__ import annotations
+
 import functools
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Any, Awaitable, Callable
+from typing import Any, AsyncContextManager, Awaitable, Callable, overload
 
-from .app import AppWorker, Task
+from .app import ActiveWorker, AppWorker, Task, TaskCollection
 from .backends.in_memory import InMemoryByteStore, InMemoryQueue
 from .codec import Codec
-from .connection import Server, serve
+from .connection import Connection, Server, serve
 
 
-class LocalApp:
+class LocalApp[A]:
     """
     Low(er)-level primitive for local dev, mimics App* types.
     """
 
     def __init__(
-        self, *, topic: str, conn: Server, queue: InMemoryQueue, app: AppWorker
+        self, *, topic: str, conn: Server, queue: InMemoryQueue, app: AppWorker[A]
     ) -> None:
         self._conn = conn
         self._app = app
@@ -33,10 +35,30 @@ class LocalApp:
         await self._conn.loop(self._topic, self._app.handle)
 
 
+@overload
+def local_app(
+    topic: str,
+    handlers: Mapping[str, Task[..., Any, ActiveWorker]],
+    codec: Codec,
+    active_worker_init: None = None,
+) -> AsyncContextManager[LocalApp[ActiveWorker]]: ...
+@overload
+def local_app[A](
+    topic: str,
+    handlers: Mapping[str, Task[..., Any, A]],
+    codec: Codec,
+    active_worker_init: Callable[[Connection, Codec, TaskCollection[A]], A],
+) -> AsyncContextManager[LocalApp[A]]: ...
+
+
 @asynccontextmanager
-async def local_app(
-    topic: str, handlers: Mapping[str, Task[..., Any]], codec: Codec
-) -> AsyncIterator[LocalApp]:
+async def local_app[A](
+    topic: str,
+    handlers: Mapping[str, Task[..., Any, A]],
+    codec: Codec,
+    active_worker_init: Callable[[Connection, Codec, TaskCollection[A]], A]
+    | None = None,
+) -> AsyncIterator[LocalApp[A]]:
     """
     Helper function for unit tests which use brrr
     """
@@ -44,11 +66,16 @@ async def local_app(
     queue = InMemoryQueue([topic])
 
     async with serve(queue, store, store) as conn:
-        app = AppWorker(handlers=handlers, codec=codec, connection=conn)
+        app = AppWorker(
+            handlers=handlers,
+            codec=codec,
+            connection=conn,
+            active_worker_init=active_worker_init or ActiveWorker.__call__,
+        )
         yield LocalApp(topic=topic, conn=conn, queue=queue, app=app)
 
 
-class LocalBrrr:
+class LocalBrrr[A]:
     """Helper class for your unit tests to use an ephemeral in-memory brrr.
 
     >>> @brrr.handler_no_arg
@@ -63,14 +90,37 @@ class LocalBrrr:
 
     """
 
+    @overload
     def __init__(
-        self, topic: str, handlers: Mapping[str, Task[..., Any]], codec: Codec
-    ):
+        self: LocalBrrr[ActiveWorker],
+        topic: str,
+        handlers: Mapping[str, Task[..., Any, A]],
+        codec: Codec,
+        active_worker_init: None = None,
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        topic: str,
+        handlers: Mapping[str, Task[..., Any, A]],
+        codec: Codec,
+        active_worker_init: Callable[[Connection, Codec, TaskCollection[A]], A],
+    ) -> None: ...
+
+    def __init__(
+        self,
+        topic: str,
+        handlers: Mapping[str, Task[..., Any, A]],
+        codec: Codec,
+        active_worker_init: Callable[[Connection, Codec, TaskCollection[A]], A]
+        | None = None,
+    ) -> None:
         self.topic = topic
         self.handlers = handlers
         self.codec = codec
+        self.active_worker_init = active_worker_init or ActiveWorker.__call__
 
-    def run[**P, R](self, f: Task[P, R] | str) -> Callable[P, Awaitable[R]]:
+    def run[**P, R](self, f: Task[P, R, A] | str) -> Callable[P, Awaitable[R]]:
         """Create an ephemeral brrr app and runt his entire task to completion.
 
         Named `run' to emphasize this is different from app.call.  This isn't
@@ -82,7 +132,10 @@ class LocalBrrr:
 
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             async with local_app(
-                topic=self.topic, handlers=self.handlers, codec=self.codec
+                topic=self.topic,
+                handlers=self.handlers,
+                codec=self.codec,
+                active_worker_init=self.active_worker_init,
             ) as app:
                 await app.schedule(f)(*args, **kwargs)
                 await app.run()
