@@ -36,14 +36,12 @@ topic_ts = "brrr-ts-demo"
 ### Brrr handlers
 
 
-@brrr.handler_no_arg
-async def hello(greetee: str):
+async def hello(app: ActiveWorker, greetee: str):
     greeting = f"Hello, {greetee}!"
     print(greeting, flush=True)
     return greeting
 
 
-@brrr.handler
 async def calc_and_print(app: ActiveWorker, op: str, n: str, salt=None):
     result = await app.call(op, topic=topic_ts)(n=int(n), salt=salt)
     print(f"{op}({n}) = {result}", flush=True)
