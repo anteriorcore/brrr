@@ -30,7 +30,7 @@
     "test:integration": "node --test 'src/**/*.test-integration.ts'",
     "prepack": "for f in ../README.md ../LICENSE ; do [ -f $f ] && cp $f . ; done"
   },
-  "repository": "git+https://github.com/anteriorai/brrr",
+  "repository": "git+https://github.com/anteriorcore/brrr",
   "engines": {
     "node": ">=24"
   },
