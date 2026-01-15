@@ -4,7 +4,6 @@ from collections import Counter
 from typing import Any
 from unittest.mock import Mock, call
 
-import brrr
 from brrr.app import ActiveWorker
 from brrr.call import Call
 from brrr.local_app import LocalBrrr
@@ -26,13 +25,11 @@ async def test_codec_key_no_args() -> None:
 
     codec.encode_call = Mock(side_effect=encode_call)  # type: ignore[method-assign]
 
-    @brrr.handler_no_arg
-    async def same(a: int) -> int:
+    async def same(app: ActiveWorker, a: int) -> int:
         assert a == 1
         calls[f"same({a})"] += 1
         return a
 
-    @brrr.handler
     async def foo(app: ActiveWorker, a: int) -> int:
         calls[f"foo({a})"] += 1
 
@@ -65,11 +62,9 @@ async def test_codec_determinstic() -> None:
 async def test_codec_api() -> None:
     codec = Mock(wraps=PickleCodec())
 
-    @brrr.handler_no_arg
-    async def plus(x: int, y: str) -> int:
+    async def plus(app: ActiveWorker, x: int, y: str) -> int:
         return x + int(y)
 
-    @brrr.handler
     async def foo(app: ActiveWorker) -> int:
         val = (
             await app.call(plus)(1, "2")

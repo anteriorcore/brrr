@@ -1,9 +1,9 @@
 import functools
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
-from .app import AppWorker, WrappedTask, WrappedTaskT
+from .app import AppWorker, Task
 from .backends.in_memory import InMemoryByteStore, InMemoryQueue
 from .codec import Codec
 from .connection import Server, serve
@@ -35,7 +35,7 @@ class LocalApp:
 
 @asynccontextmanager
 async def local_app(
-    topic: str, handlers: Mapping[str, WrappedTask], codec: Codec
+    topic: str, handlers: Mapping[str, Task[..., Any]], codec: Codec
 ) -> AsyncIterator[LocalApp]:
     """
     Helper function for unit tests which use brrr
@@ -63,14 +63,14 @@ class LocalBrrr:
 
     """
 
-    def __init__(self, topic: str, handlers: Mapping[str, WrappedTask], codec: Codec):
+    def __init__(
+        self, topic: str, handlers: Mapping[str, Task[..., Any]], codec: Codec
+    ):
         self.topic = topic
         self.handlers = handlers
         self.codec = codec
 
-    def run[**P, R](
-        self, f: WrappedTaskT[..., P, R] | str
-    ) -> Callable[P, Awaitable[R]]:
+    def run[**P, R](self, f: Task[P, R] | str) -> Callable[P, Awaitable[R]]:
         """Create an ephemeral brrr app and runt his entire task to completion.
 
         Named `run' to emphasize this is different from app.call.  This isn't
