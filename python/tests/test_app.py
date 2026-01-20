@@ -123,7 +123,7 @@ async def _call_nested_gather(
         typing.assert_type(result, list[int])
         return result
 
-    handlers: dict[str, Task[..., Any]] = dict(foo=foo, bar=bar, top=top)
+    handlers: dict[str, Task[..., Any, None]] = dict(foo=foo, bar=bar, top=top)
     b = LocalBrrr(topic=topic, handlers=handlers, codec=PickleCodec())
     await b.run(top)([3, 4])
 
@@ -532,7 +532,7 @@ async def test_app_handler_names(topic: str, task_name: str) -> None:
         # Both are the same.
         return await app.call(foo)(a) * cast(int, await app.call(name_foo)(a))
 
-    handlers: dict[str, Task[..., Any]] = {
+    handlers: dict[str, Task[..., Any, None]] = {
         name_foo: foo,
         name_bar: bar,
     }
@@ -580,3 +580,40 @@ async def test_app_subclass(topic: str) -> None:
         queue.flush()
         await conn.loop(topic, app.handle)
         assert await app.read(foo)(4) == 14
+
+
+async def test_active_worker_context(topic: str) -> None:
+    store = InMemoryByteStore()
+    queue = InMemoryQueue([topic])
+
+    async def foo(app: ActiveWorker[str], a: int) -> str:
+        return f"{app.get_context()}-{a}"
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker[str](
+            handlers=dict(foo=foo), codec=PickleCodec(), connection=conn, context="ctx"
+        )
+        await app.schedule(foo, topic=topic)(7)
+        queue.flush()
+        await conn.loop(topic, app.handle)
+        assert await app.read(foo)(7) == "ctx-7"
+
+
+async def test_active_worker_context_type_error(topic: str) -> None:
+    store = InMemoryByteStore()
+    queue = InMemoryQueue([topic])
+
+    async def foo(app: ActiveWorker[str], a: int) -> str:
+        return f"{app.get_context()}-{a}"
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker[int](
+            handlers=dict(foo=foo),  # type: ignore[dict-item]
+            codec=PickleCodec(),
+            connection=conn,
+            context=6,
+        )
+        await app.schedule(foo, topic=topic)(7)  # type: ignore[arg-type, call-arg]
+        queue.flush()
+        await conn.loop(topic, app.handle)
+        assert await app.read(foo)(7) == "6-7"  # type: ignore[arg-type, call-arg]

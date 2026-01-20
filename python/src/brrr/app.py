@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import sys
 from collections import UserDict
 from collections.abc import (
     Awaitable,
@@ -9,14 +10,23 @@ from collections.abc import (
     Mapping,
     Sequence,
 )
-from typing import Any, Concatenate, overload
+from typing import Any, Concatenate, Generic, Self, TypeVar, overload
 
 from brrr.store import NotFoundError
 
 from .codec import Codec
 from .connection import Connection, Defer, DeferredCall, Request, Response
 
-type Task[**P, R] = Callable[Concatenate[ActiveWorker, P], Coroutine[Any, Any, R]]
+type Task[**P, R, A] = Callable[Concatenate[ActiveWorker[A], P], Coroutine[Any, Any, R]]
+
+# Ideally we would use generic type parameter syntax, like `class Foo[A = None]: ...`,
+# to let users use `ActiveWorker` by itself instead of requiring `ActiveWorker[None]`.
+# However, default type parameters for generics are only available in Python 3.13+.
+# For compatibility with Python 3.12, we use a TypeVar without a default instead.
+if sys.version_info >= (3, 13):
+    A = TypeVar("A", default=None)
+else:
+    A = TypeVar("A")
 
 
 class NotInBrrrError(Exception):
@@ -32,25 +42,25 @@ def _val2key[K, V](d: Mapping[K, V], val: V) -> K:
     raise KeyError(val)
 
 
-class TaskCollection(UserDict[str, Task[..., Any]]):
-    def task2name(self, task: Task[..., Any]) -> str:
+class TaskCollection(UserDict[str, Task[..., Any, A]], Generic[A]):
+    def task2name(self, task: Task[..., Any, A]) -> str:
         return _val2key(self, task)
 
-    def spec2name(self, spec: str | Task[..., Any]) -> str:
+    def spec2name(self, spec: str | Task[..., Any, A]) -> str:
         return spec if isinstance(spec, str) else self.task2name(spec)
 
 
-class AppConsumer:
+class AppConsumer(Generic[A]):
     _codec: Codec
     _connection: Connection
-    tasks: TaskCollection
+    tasks: TaskCollection[A]
 
     def __init__(
         self,
         codec: Codec,
         connection: Connection,
-        handlers: Mapping[str, Task[..., Any]] | None = None,
-    ):
+        handlers: Mapping[str, Task[..., Any, A]] | None = None,
+    ) -> None:
         self._codec = codec
         self._connection = connection
         self.tasks = TaskCollection(**(handlers or {}))
@@ -58,7 +68,7 @@ class AppConsumer:
     @overload
     def schedule[**P, R](
         self,
-        task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]],
+        task_spec: Callable[Concatenate[ActiveWorker[A], P], Awaitable[R]],
         *,
         topic: str,
     ) -> Callable[P, Awaitable[None]]: ...
@@ -87,7 +97,7 @@ class AppConsumer:
 
     @overload
     def read[**P, R](
-        self, task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]]
+        self, task_spec: Callable[Concatenate[ActiveWorker[A], P], Awaitable[R]]
     ) -> Callable[P, Awaitable[R]]: ...
     @overload
     def read[**P, R](
@@ -106,7 +116,36 @@ class AppConsumer:
         return f
 
 
-class AppWorker(AppConsumer):
+class AppWorker(AppConsumer[A], Generic[A]):
+    @overload
+    def __init__(
+        self: AppWorker[None],
+        codec: Codec,
+        connection: Connection,
+        *,
+        handlers: Mapping[str, Task[..., Any, None]] | None = None,
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        codec: Codec,
+        connection: Connection,
+        *,
+        handlers: Mapping[str, Task[..., Any, A]] | None = None,
+        context: A,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        codec: Codec,
+        connection: Connection,
+        *,
+        handlers: Mapping[str, Task[..., Any, Any]] | None = None,
+        context: Any = None,
+    ) -> None:
+        super().__init__(codec, connection, handlers=handlers)
+        self._context: A = context
+
     async def handle(self, request: Request, conn: Connection) -> Response | Defer:
         """Glue between this class and the underlying Connection.loop handler"""
         task_name = request.call.task_name
@@ -115,7 +154,7 @@ class AppWorker(AppConsumer):
         # up somewhere else.
         handler = functools.partial(
             self.tasks[task_name],
-            ActiveWorker(conn, self._codec, self.tasks),
+            ActiveWorker(conn, self._codec, self.tasks, self._context),
         )
         try:
             resp = await self._codec.invoke_task(request.call, handler)
@@ -124,20 +163,22 @@ class AppWorker(AppConsumer):
         return Response(payload=resp)
 
 
-class ActiveWorker:
-    _connection: Connection
-    _codec: Codec
-    _handlers: TaskCollection
-
-    def __init__(self, conn: Connection, codec: Codec, tasks: TaskCollection):
+class ActiveWorker(Generic[A]):
+    def __init__(
+        self, conn: Connection, codec: Codec, tasks: TaskCollection[A], context: A
+    ) -> None:
         self._connection = conn
         self._codec = codec
         self._handlers = tasks
+        self._context = context
+
+    def get_context(self) -> A:
+        return self._context
 
     @overload
     def call[**P, R](
         self,
-        task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]],
+        task_spec: Callable[Concatenate[Self, P], Awaitable[R]],
         *,
         topic: str | None = None,
     ) -> Callable[P, Awaitable[R]]: ...
