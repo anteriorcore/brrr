@@ -4,6 +4,6 @@ import { codecContractTest } from "./codec.test.ts";
 
 await suite(import.meta.filename, async () => {
   await test(NaiveJsonCodec.name, async () => {
-    await codecContractTest(new NaiveJsonCodec());
+    await codecContractTest(new NaiveJsonCodec(), () => null);
   });
 });

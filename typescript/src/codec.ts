@@ -1,4 +1,4 @@
-import type { Task } from "./app.ts";
+import type { ActiveWorker, Task } from "./app.ts";
 import type { Call } from "./call.ts";
 
 export interface Codec<C> {
@@ -7,6 +7,7 @@ export interface Codec<C> {
   invokeTask<A extends unknown[], R>(
     call: Call,
     task: Task<C, A, R>,
+    activeWorkerFactory: () => ActiveWorker,
   ): Promise<Uint8Array>;
 
   decodeReturn(taskName: string, payload: Uint8Array): unknown;

@@ -2,6 +2,7 @@ import { type BinaryToTextEncoding, createHash } from "node:crypto";
 import type { Call } from "./call.ts";
 import type { Codec } from "./codec.ts";
 import { decoder, encoder } from "./internal-codecs.ts";
+import { ActiveWorker, type Task } from "./app.ts";
 
 type Json = {
   parse: <T = unknown>(text: string) => T;
@@ -18,7 +19,7 @@ type Json = {
  * reccommended for production use; the primary purpose of this codec is
  * executable documentation.
  */
-export class NaiveJsonCodec implements Codec {
+export class NaiveJsonCodec implements Codec<ActiveWorker> {
   public static readonly algorithm = "sha256";
   public static readonly binaryToTextEncoding =
     "hex" satisfies BinaryToTextEncoding;
@@ -47,11 +48,12 @@ export class NaiveJsonCodec implements Codec {
 
   public async invokeTask<A extends unknown[], R>(
     call: Call,
-    task: (...args: A) => Promise<R>,
+    handler: Task<ActiveWorker, A, R>,
+    activeWorkerFactory: () => ActiveWorker,
   ): Promise<Uint8Array> {
     const decoded = decoder.decode(call.payload);
     const args = this.json.parse(decoded) as A;
-    const result = await task(...args);
+    const result = await handler(activeWorkerFactory(), ...args);
     const resultJson = this.json.stringify(result);
     return encoder.encode(resultJson);
   }
