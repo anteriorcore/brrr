@@ -5,7 +5,6 @@ import {
   AppConsumer,
   AppWorker,
   type Handlers,
-  taskFn,
 } from "./app.ts";
 import {
   type Connection,
@@ -46,7 +45,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   let server: SubscriberServer;
 
   // Test tasks
-  function bar(a: number) {
+  function bar(ctx: ActiveWorker, a: number) {
     return 456;
   }
 
@@ -54,7 +53,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     return (await app.call(bar, topic)(a + 1)) + 1;
   }
 
-  function one(a: number): number {
+  function one(ctx: ActiveWorker, a: number): number {
     return a + 5;
   }
 
@@ -63,8 +62,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     strictEqual(result, 15);
   }
 
-  const handlers: Handlers = {
-    bar: taskFn(bar),
+  const handlers: Handlers<ActiveWorker> = {
+    bar,
     foo,
   };
 
@@ -108,13 +107,13 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test(AppConsumer.name, async () => {
-    function foo(n: number) {
+    function foo(ctx: ActiveWorker, n: number) {
       return n * n;
     }
 
     const workerServer = new SubscriberServer(store, cache, emitter);
     const appWorker = new AppWorker(codec, workerServer, {
-      foo: taskFn(foo),
+      foo,
     });
     workerServer.listen(topic, appWorker.handle);
 
@@ -140,12 +139,12 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     async function callNestedGather(useBrrGather = true): Promise<string[]> {
       const calls: string[] = [];
 
-      function foo(a: number): number {
+      function foo(ctx: ActiveWorker, a: number): number {
         calls.push(`foo(${a})`);
         return a * 2;
       }
 
-      function bar(a: number): number {
+      function bar(ctx: ActiveWorker, a: number): number {
         calls.push(`bar(${a})`);
         return a - 1;
       }
@@ -169,8 +168,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       const localBrrr = new LocalBrrr(
         topic,
         {
-          foo: taskFn(foo),
-          bar: taskFn(bar),
+          foo,
+          bar,
           top,
         },
         codec,
@@ -206,7 +205,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
   await test("topics separate app same connection", async () => {
     const app1 = new AppWorker(codec, server, {
-      one: taskFn(one),
+      one,
     });
     const app2 = new AppWorker(codec, server, { two });
 
@@ -226,7 +225,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     const server1 = new SubscriberServer(store, cache, emitter);
     const server2 = new SubscriberServer(store, cache, emitter);
     const app1 = new AppWorker(codec, server1, {
-      one: taskFn(one),
+      one,
     });
     const app2 = new AppWorker(codec, server2, { two });
 
@@ -243,7 +242,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
   await test("topics same app", async () => {
     const app = new AppWorker(codec, server, {
-      one: taskFn(one),
+      one,
       two,
     });
     server.listen(subtopics.t1, app.handle);
@@ -280,7 +279,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   await test("no debounce parent", async () => {
     const calls = new Map<string, number>();
 
-    function one(_: number): number {
+    function one(ctx: ActiveWorker, _: number): number {
       calls.set("one", (calls.get("one") || 0) + 1);
       return 1;
     }
@@ -296,7 +295,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     const brrr = new LocalBrrr(
       topic,
       {
-        one: taskFn(one),
+        one,
         foo,
       },
       codec,
@@ -307,7 +306,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("app handler names", async () => {
-    function foo(a: number): number {
+    function foo(ctx: ActiveWorker, a: number): number {
       return a * a;
     }
 
@@ -319,7 +318,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     }
 
     const worker = new AppWorker(codec, server, {
-      "quux/zim": taskFn(foo),
+      "quux/zim": foo,
       "quux/bar": bar,
     });
     const localApp = new LocalApp(topic, server, worker);
@@ -395,7 +394,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       let errors = 5;
 
-      async function foo(a: number): Promise<number> {
+      async function foo(ctx: ActiveWorker, a: number): Promise<number> {
         if (errors) {
           errors--;
           throw new MyError();
@@ -406,7 +405,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const app = new AppWorker(codec, server, {
         ...handlers,
-        foo: taskFn(foo),
+        foo,
       });
 
       while (true) {
@@ -431,7 +430,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       let errors = 5;
 
-      function bar(a: number): number {
+      function bar(ctx: ActiveWorker, a: number): number {
         if (errors) {
           errors--;
           throw new MyError();
@@ -446,7 +445,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       const app = new AppWorker(codec, server, {
         ...handlers,
         foo,
-        bar: taskFn(bar),
+        bar,
       });
 
       while (true) {
@@ -494,11 +493,11 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     });
 
     await test("app subclass", async () => {
-      function bar(a: number): number {
+      function bar(ctx: ActiveWorker, a: number): number {
         return a + 1;
       }
 
-      function baz(a: number) {
+      function baz(ctx: ActiveWorker, a: number) {
         return a + 10;
       }
 
@@ -506,7 +505,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         return app.call(bar)(a);
       }
 
-      class MyAppWorker extends AppWorker {
+      class MyAppWorker extends AppWorker<ActiveWorker> {
         public readonly myHandle = async (
           request: Request,
           connection: Connection,
@@ -526,8 +525,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const app = new MyAppWorker(codec, server, {
         foo,
-        bar: taskFn(bar),
-        baz: taskFn(baz),
+        bar,
+        baz,
       });
       await app.schedule(foo, topic)(4);
       await server.loop(topic, app.myHandle, flusher);
@@ -560,7 +559,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       });
 
       await test("spawn limit recoverable", async () => {
-        function one(_: number): number {
+        function one(ctx: ActiveWorker, _: number): number {
           return 1;
         }
 
@@ -578,7 +577,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         });
         const n = server.spawnLimit + 1;
         let spawnLimitEncountered = false;
-        const app = new AppWorker(codec, server, { one: taskFn(one), foo });
+        const app = new AppWorker(codec, server, { one, foo });
         while (true) {
           // reset cache
           Object.defineProperty(cache, "cache", {
@@ -603,7 +602,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       await test("spawn limit breadth mapped", async () => {
         const calls = new Map<string, number>();
 
-        function one(_: number): number {
+        function one(ctx: ActiveWorker, _: number): number {
           calls.set("one", (calls.get("one") || 0) + 1);
           return 1;
         }
@@ -616,7 +615,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           return results.reduce((sum, val) => sum + val);
         }
 
-        const app = new AppWorker(codec, server, { one: taskFn(one), foo });
+        const app = new AppWorker(codec, server, { one, foo });
         await app.schedule(foo, topic)(server.spawnLimit + 4);
 
         await rejects(server.loop(topic, app.handle, flusher), SpawnLimitError);
@@ -626,7 +625,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       await test("spawn limit breadth manual", async () => {
         const calls = new Map<string, number>();
 
-        function one(_: number): number {
+        function one(ctx: ActiveWorker, _: number): number {
           calls.set("one", (calls.get("one") || 0) + 1);
           return 1;
         }
@@ -646,7 +645,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           value: 100,
         });
 
-        const app = new AppWorker(codec, server, { foo, one: taskFn(one) });
+        const app = new AppWorker(codec, server, { foo, one });
         await app.schedule(foo, topic)(server.spawnLimit + 3);
 
         await rejects(server.loop(topic, app.handle, flusher));
@@ -660,7 +659,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         let n = 0;
         let final = undefined;
 
-        function same(a: number): number {
+        function same(ctx: ActiveWorker, a: number): number {
           n++;
           return a;
         }
@@ -679,7 +678,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           value: 100,
         });
 
-        const app = new AppWorker(codec, server, { foo, same: taskFn(same) });
+        const app = new AppWorker(codec, server, { foo, same });
         await app.schedule(foo, topic)(server.spawnLimit + 5);
 
         await server.loop(topic, app.handle, flusher);

@@ -1,7 +1,7 @@
 export {
   type Task,
   type Handlers,
-  taskFn,
+  type Registry,
   AppConsumer,
   AppWorker,
   ActiveWorker,

@@ -8,13 +8,18 @@ import {
 import type { Codec } from "./codec.ts";
 import { NotFoundError, TaskNotFoundError } from "./errors.ts";
 
-export type Task<C, A extends unknown[] = any[], R = any> = (
-  ...args: [C, ...A]
-) => R;
+export type Task<C, A extends unknown[] = any[], R = any> = NoContextTask<
+  [C, ...A],
+  R
+>;
+
+export type NoContextTask<A extends unknown[] = any[], R = any> = (
+  ...args: A
+) => R | Promise<R>;
 
 export type Handlers<C> = Readonly<Record<string, Task<C, any[], any>>>;
 
-type Registry<C> = {
+export type Registry<C> = {
   codec: Codec<C>;
   handlers: Handlers<C>;
 };
@@ -97,6 +102,7 @@ export class AppWorker<C> extends AppConsumer<C> {
       const payload = await this.registry.codec.invokeTask(
         request.call,
         handler,
+        () => new ActiveWorker(connection, this.registry),
       );
       return { payload };
     } catch (err) {
@@ -108,17 +114,17 @@ export class AppWorker<C> extends AppConsumer<C> {
   };
 }
 
-export class ActiveWorker<C = any> {
+export class ActiveWorker {
   private readonly connection: Connection;
-  private readonly registry: Registry<C>;
+  private readonly registry: Registry<any>;
 
-  public constructor(connection: Connection, registry: Registry<C>) {
+  public constructor(connection: Connection, registry: Registry<any>) {
     this.connection = connection;
     this.registry = registry;
   }
 
   public call<A extends unknown[], R>(
-    taskIdentifier: TaskIdentifier<C, A, R>,
+    taskIdentifier: TaskIdentifier<any, A, R>,
     topic?: string | undefined,
   ): (...args: A) => Promise<R> {
     const taskName = taskIdentifierToName(
