@@ -114,17 +114,17 @@ export class AppWorker<C> extends AppConsumer<C> {
   };
 }
 
-export class ActiveWorker {
+export class ActiveWorker<C = any> {
   private readonly connection: Connection;
-  private readonly registry: Registry<any>;
+  private readonly registry: Registry<C>;
 
-  public constructor(connection: Connection, registry: Registry<any>) {
+  public constructor(connection: Connection, registry: Registry<C>) {
     this.connection = connection;
     this.registry = registry;
   }
 
   public call<A extends unknown[], R>(
-    taskIdentifier: TaskIdentifier<any, A, R>,
+    taskIdentifier: TaskIdentifier<C, A, R>,
     topic?: string | undefined,
   ): (...args: A) => Promise<R> {
     const taskName = taskIdentifierToName(

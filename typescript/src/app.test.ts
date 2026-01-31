@@ -62,10 +62,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     strictEqual(result, 15);
   }
 
-  const handlers: Handlers<ActiveWorker> = {
-    bar,
-    foo,
-  };
+  const handlers: Handlers<ActiveWorker> = { bar, foo };
 
   function waitFor(call: Call, predicate?: () => Promise<void>): Promise<void> {
     return new Promise((resolve) => {
@@ -112,9 +109,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     }
 
     const workerServer = new SubscriberServer(store, cache, emitter);
-    const appWorker = new AppWorker(codec, workerServer, {
-      foo,
-    });
+    const appWorker = new AppWorker(codec, workerServer, { foo });
     workerServer.listen(topic, appWorker.handle);
 
     const appConsumer = new AppConsumer(codec, workerServer);
@@ -131,7 +126,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test(LocalBrrr.name, async () => {
-    const brrr = new LocalBrrr(topic, handlers, codec);
+    const brrr = new LocalBrrr(topic, { handlers, codec });
     strictEqual(await brrr.run(foo)(122), 457);
   });
 
@@ -165,15 +160,10 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         return Promise.all(xs.map((x) => notBrrrTask(app, x)));
       }
 
-      const localBrrr = new LocalBrrr(
-        topic,
-        {
-          foo,
-          bar,
-          top,
-        },
+      const localBrrr = new LocalBrrr(topic, {
         codec,
-      );
+        handlers: { foo, bar, top },
+      });
       await localBrrr.run(top)([3, 4]);
       return calls;
     }
@@ -204,9 +194,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("topics separate app same connection", async () => {
-    const app1 = new AppWorker(codec, server, {
-      one,
-    });
+    const app1 = new AppWorker(codec, server, { one });
     const app2 = new AppWorker(codec, server, { two });
 
     const call = await codec.encodeCall("two", [7]);
@@ -224,9 +212,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   await test("topics separate app separate connection", async () => {
     const server1 = new SubscriberServer(store, cache, emitter);
     const server2 = new SubscriberServer(store, cache, emitter);
-    const app1 = new AppWorker(codec, server1, {
-      one,
-    });
+    const app1 = new AppWorker(codec, server1, { one });
     const app2 = new AppWorker(codec, server2, { two });
 
     server1.listen(subtopics.t1, app1.handle);
@@ -241,10 +227,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("topics same app", async () => {
-    const app = new AppWorker(codec, server, {
-      one,
-      two,
-    });
+    const app = new AppWorker(codec, server, { one, two });
     server.listen(subtopics.t1, app.handle);
     server.listen(subtopics.t2, app.handle);
 
@@ -270,7 +253,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       return results.reduce((sum, val) => sum + val);
     }
 
-    const brrr = new LocalBrrr(topic, { foo }, codec);
+    const brrr = new LocalBrrr(topic, { codec, handlers: { foo } });
     await brrr.run(foo)(3);
 
     deepStrictEqual(Object.fromEntries(calls), { 0: 1, 1: 2, 2: 2, 3: 2 });
@@ -292,14 +275,10 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       return results.reduce((sum, val) => sum + val);
     }
 
-    const brrr = new LocalBrrr(
-      topic,
-      {
-        one,
-        foo,
-      },
+    const brrr = new LocalBrrr(topic, {
       codec,
-    );
+      handlers: { one, foo },
+    });
     await brrr.run(foo)(50);
 
     deepStrictEqual(Object.fromEntries(calls), { one: 50, foo: 51 });
@@ -523,11 +502,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         };
       }
 
-      const app = new MyAppWorker(codec, server, {
-        foo,
-        bar,
-        baz,
-      });
+      const app = new MyAppWorker(codec, server, { foo, bar, baz });
       await app.schedule(foo, topic)(4);
       await server.loop(topic, app.myHandle, flusher);
       strictEqual(await app.read(foo)(4), 14);

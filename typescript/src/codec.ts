@@ -7,7 +7,7 @@ export interface Codec<C> {
   invokeTask<A extends unknown[], R>(
     call: Call,
     task: Task<C, A, R>,
-    activeWorkerFactory: () => ActiveWorker,
+    activeWorkerFactory: () => ActiveWorker<C>,
   ): Promise<Uint8Array>;
 
   decodeReturn(taskName: string, payload: Uint8Array): unknown;
