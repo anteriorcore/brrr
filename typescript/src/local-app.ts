@@ -5,6 +5,7 @@ import {
   type Handlers,
   type TaskIdentifier,
   taskIdentifierToName,
+  type Registry,
 } from "./app.ts";
 import type { Codec } from "./codec.ts";
 import {
@@ -55,13 +56,11 @@ export class LocalApp<C> {
 
 export class LocalBrrr<C> {
   private readonly topic: string;
-  private readonly handlers: Handlers<C>;
-  private readonly codec: Codec<C>;
+  private readonly registry: Registry<C>;
 
-  public constructor(topic: string, handlers: Handlers<C>, codec: Codec<C>) {
+  public constructor(topic: string, registry: Registry<C>) {
     this.topic = topic;
-    this.handlers = handlers;
-    this.codec = codec;
+    this.registry = registry;
   }
 
   public run<A extends unknown[], R>(taskIdentifier: TaskIdentifier<C, A, R>) {
@@ -69,13 +68,20 @@ export class LocalBrrr<C> {
     const cache = new InMemoryCache();
     const emitter = new InMemoryEmitter();
     const server = new SubscriberServer(store, cache, emitter);
-    const worker = new AppWorker(this.codec, server, this.handlers);
+    const worker = new AppWorker(
+      this.registry.codec,
+      server,
+      this.registry.handlers,
+    );
     const localApp = new LocalApp(this.topic, server, worker);
-    const taskName = taskIdentifierToName(taskIdentifier, this.handlers);
+    const taskName = taskIdentifierToName(
+      taskIdentifier,
+      this.registry.handlers,
+    );
     return async (...args: A): Promise<R> => {
       localApp.run();
       await localApp.schedule(taskName)(...args);
-      const call = await this.codec.encodeCall(taskName, args);
+      const call = await this.registry.codec.encodeCall(taskName, args);
       return new Promise((resolve) => {
         emitter.onEventSymbol(BrrrTaskDoneEventSymbol, async ({ callHash }) => {
           if (callHash === call.callHash) {
@@ -86,7 +92,10 @@ export class LocalBrrr<C> {
                 callHash,
               });
             }
-            const result = this.codec.decodeReturn(taskName, payload) as R;
+            const result = this.registry.codec.decodeReturn(
+              taskName,
+              payload,
+            ) as R;
             resolve(result);
           }
         });
