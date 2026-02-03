@@ -2,7 +2,7 @@
 import {
   ActiveWorker,
   AppWorker,
-  NaiveJsonCodec,
+  DemoJsonCodec,
   Server,
 } from "../src/index.ts";
 import { Dynamo, Redis } from "../src/backends/index.ts";
@@ -68,7 +68,7 @@ const server = new Server(dynamo, redis, {
   },
 });
 
-const codec = new NaiveJsonCodec();
+const codec = new DemoJsonCodec();
 
 const app = new AppWorker(codec, server, { fib, lucas });
 
