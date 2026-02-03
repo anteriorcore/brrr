@@ -34,7 +34,6 @@ Highlights:
 ```python
 import brrr
 
-@brrr.handler
 async def fib(app: brrr.ActiveWorker, n: int, salt=None):
     match n:
         case 0: return 0
@@ -45,15 +44,13 @@ async def fib(app: brrr.ActiveWorker, n: int, salt=None):
         ))
 
 
-@brrr.handler
 async def fib_and_print(app: brrr.ActiveWorker, n: str):
     f = await app.call(fib)(int(n))
     print(f"fib({n}) = {f}", flush=True)
     return f
 
 
-@brrr.handler_no_arg
-async def hello(greetee: str):
+async def hello(app: brrr.ActiveWorker, greetee: str):
     greeting = f"Hello, {greetee}!"
     print(greeting, flush=True)
     return greeting
