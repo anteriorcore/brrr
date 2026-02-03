@@ -102,7 +102,7 @@ export class AppWorker<C> extends AppConsumer<C> {
       const payload = await this.registry.codec.invokeTask(
         request.call,
         handler,
-        () => new ActiveWorker(connection, this.registry),
+        new ActiveWorker(connection, this.registry),
       );
       return { payload };
     } catch (err) {

@@ -51,11 +51,11 @@ export class DemoJsonCodec implements Codec<ActiveWorker> {
   public async invokeTask<A extends unknown[], R>(
     call: Call,
     handler: Task<ActiveWorker, A, R>,
-    activeWorkerFactory: () => ActiveWorker,
+    activeWorker: ActiveWorker,
   ): Promise<Uint8Array> {
     const decoded = decoder.decode(call.payload);
     const args = this.json.parse(decoded) as A;
-    const result = await handler(activeWorkerFactory(), ...args);
+    const result = await handler(activeWorker, ...args);
     const resultJson = this.json.stringify(result);
     return encoder.encode(resultJson);
   }
