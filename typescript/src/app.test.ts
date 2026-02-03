@@ -19,7 +19,7 @@ import {
   InMemoryEmitter,
   InMemoryStore,
 } from "./backends/in-memory.ts";
-import { NaiveJsonCodec } from "./naive-json-codec.ts";
+import { DemoJsonCodec } from "./demo-json-codec.ts";
 import type { Call } from "./call.ts";
 import { NotFoundError, SpawnLimitError } from "./errors.ts";
 import { deepStrictEqual, ok, rejects } from "node:assert/strict";
@@ -31,7 +31,7 @@ import { parse, stringify } from "superjson";
 import { matrixSuite } from "./fixture.test.ts";
 
 await matrixSuite(import.meta.filename, async (_, matrix) => {
-  const codec = new NaiveJsonCodec();
+  const codec = new DemoJsonCodec();
   const topic = matrix.topic;
   const subtopics = {
     t1: "t1",
@@ -462,7 +462,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         );
       }
 
-      const codec = new NaiveJsonCodec({ stringify, parse });
+      const codec = new DemoJsonCodec({ stringify, parse });
       const app = new AppWorker(codec, server, { fib, top });
       await app.schedule(top, topic)();
 
