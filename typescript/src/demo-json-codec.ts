@@ -10,16 +10,18 @@ type Json = {
 };
 
 /**
- * Naive JSON codec that uses built-in `JSON` for serialization and deserialization.
+ * An opinionated codec for demo/testing purposes.
  *
- * You can provide a custom JSON implementation if you want to support more datatypes.
+ * Uses built-in `JSON` for serialization and deserialization, and expects
+ *  `ActiveWorker` as a context. Can take custom JSON implementation to
+ * customize its behavior.
  *
  * It tries its best to ensure that the serialized data is deterministic by
  * sorting object keys recursively before serialization, but it's not
  * reccommended for production use; the primary purpose of this codec is
  * executable documentation.
  */
-export class NaiveJsonCodec implements Codec<ActiveWorker> {
+export class DemoJsonCodec implements Codec<ActiveWorker> {
   public static readonly algorithm = "sha256";
   public static readonly binaryToTextEncoding =
     "hex" satisfies BinaryToTextEncoding;
@@ -39,7 +41,7 @@ export class NaiveJsonCodec implements Codec<ActiveWorker> {
     taskName: string,
     args: A,
   ): Promise<Call> {
-    const sortedArgs = args.map(NaiveJsonCodec.sortObjectKeys);
+    const sortedArgs = args.map(DemoJsonCodec.sortObjectKeys);
     const data = this.json.stringify(sortedArgs);
     const payload = encoder.encode(data);
     const callHash = await this.hashCall(taskName, sortedArgs);
@@ -63,9 +65,9 @@ export class NaiveJsonCodec implements Codec<ActiveWorker> {
     args: A,
   ): Promise<string> {
     const data = this.json.stringify([taskName, args]);
-    return createHash(NaiveJsonCodec.algorithm)
+    return createHash(DemoJsonCodec.algorithm)
       .update(data)
-      .digest(NaiveJsonCodec.binaryToTextEncoding);
+      .digest(DemoJsonCodec.binaryToTextEncoding);
   }
 
   protected static sortObjectKeys<T>(unordered: T): T {
@@ -73,13 +75,13 @@ export class NaiveJsonCodec implements Codec<ActiveWorker> {
       return unordered;
     }
     if (Array.isArray(unordered)) {
-      return unordered.map(NaiveJsonCodec.sortObjectKeys) as T;
+      return unordered.map(DemoJsonCodec.sortObjectKeys) as T;
     }
     const entries = Object.keys(unordered)
       .sort()
       .map((key) => [
         key,
-        NaiveJsonCodec.sortObjectKeys(unordered[key as keyof typeof unordered]),
+        DemoJsonCodec.sortObjectKeys(unordered[key as keyof typeof unordered]),
       ]);
     return Object.fromEntries(entries);
   }
