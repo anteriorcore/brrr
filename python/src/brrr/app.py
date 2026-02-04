@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import functools
 from collections import UserDict
 from collections.abc import (
     Awaitable,
     Callable,
-    Coroutine,
     Mapping,
     Sequence,
 )
+from dataclasses import dataclass
 from typing import Any, Concatenate, overload
 
 from brrr.store import NotFoundError
@@ -16,7 +15,13 @@ from brrr.store import NotFoundError
 from .codec import Codec
 from .connection import Connection, Defer, DeferredCall, Request, Response
 
-type Task[**P, R] = Callable[Concatenate[ActiveWorker, P], Coroutine[Any, Any, R]]
+type Task[C, **P, R] = Callable[Concatenate[C, P], Awaitable[R]]
+
+
+@dataclass
+class Registry[C]:
+    codec: Codec[C]
+    handlers: TaskCollection[C]
 
 
 class NotInBrrrError(Exception):
@@ -32,40 +37,31 @@ def _val2key[K, V](d: Mapping[K, V], val: V) -> K:
     raise KeyError(val)
 
 
-class TaskCollection(UserDict[str, Task[..., Any]]):
-    def task2name(self, task: Task[..., Any]) -> str:
+class TaskCollection[C](UserDict[str, Task[C, ..., Any]]):
+    def task2name(self, task: Task[C, ..., Any]) -> str:
         return _val2key(self, task)
 
-    def spec2name(self, spec: str | Task[..., Any]) -> str:
+    def spec2name(self, spec: str | Task[C, ..., Any]) -> str:
         return spec if isinstance(spec, str) else self.task2name(spec)
 
 
-class AppConsumer:
-    _codec: Codec
+class AppConsumer[C]:
     _connection: Connection
-    tasks: TaskCollection
+    _registry: Registry[C]
 
     def __init__(
         self,
-        codec: Codec,
+        codec: Codec[C],
         connection: Connection,
-        handlers: Mapping[str, Task[..., Any]] | None = None,
+        handlers: Mapping[str, Task[C, ..., Any]] = {},
     ):
-        self._codec = codec
         self._connection = connection
-        self.tasks = TaskCollection(**(handlers or {}))
+        self._registry = Registry(codec, TaskCollection(handlers))
 
     @overload
     def schedule[**P, R](
         self,
-        task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]],
-        *,
-        topic: str,
-    ) -> Callable[P, Awaitable[None]]: ...
-    @overload
-    def schedule[**P, R](
-        self,
-        task_spec: Callable[P, Awaitable[R]],
+        task_spec: Task[C, P, R],
         *,
         topic: str,
     ) -> Callable[P, Awaitable[None]]: ...
@@ -75,10 +71,10 @@ class AppConsumer:
     ) -> Callable[..., Awaitable[None]]: ...
     def schedule(self, task_spec: Any, *, topic: str) -> Callable[..., Awaitable[None]]:
         """Public-facing one-shot schedule method."""
-        task_name = self.tasks.spec2name(task_spec)
+        task_name = self._registry.handlers.spec2name(task_spec)
 
         async def f(*args: Any, **kwargs: Any) -> None:
-            call = self._codec.encode_call(task_name, args, kwargs)
+            call = self._registry.codec.encode_call(task_name, args, kwargs)
             await self._connection.schedule_raw(
                 topic, call.call_hash, task_name, call.payload
             )
@@ -86,65 +82,48 @@ class AppConsumer:
         return f
 
     @overload
-    def read[**P, R](
-        self, task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]]
-    ) -> Callable[P, Awaitable[R]]: ...
-    @overload
-    def read[**P, R](
-        self, task_spec: Callable[P, Awaitable[R]]
-    ) -> Callable[P, Awaitable[R]]: ...
+    def read[**P, R](self, task_spec: Task[C, P, R]) -> Callable[P, Awaitable[R]]: ...
     @overload
     def read(self, task_spec: str) -> Callable[..., Awaitable[Any]]: ...
     def read(self, task_spec: Any) -> Callable[..., Awaitable[Any]]:
-        task_name = self.tasks.spec2name(task_spec)
+        task_name = self._registry.handlers.spec2name(task_spec)
 
         async def f(*args: Any, **kwargs: Any) -> Any:
-            call = self._codec.encode_call(task_name, args, kwargs)
+            call = self._registry.codec.encode_call(task_name, args, kwargs)
             payload = await self._connection._memory.get_value(call.call_hash)
-            return self._codec.decode_return(task_name, payload)
+            return self._registry.codec.decode_return(task_name, payload)
 
         return f
 
 
-class AppWorker(AppConsumer):
+class AppWorker[C](AppConsumer[C]):
     async def handle(self, request: Request, conn: Connection) -> Response | Defer:
         """Glue between this class and the underlying Connection.loop handler"""
         task_name = request.call.task_name
-        # This is such an odd place to be wrapping this... the carpet keeps
-        # bubbling up somewhere and no matter how often I push it down, it pops
-        # up somewhere else.
-        handler = functools.partial(
-            self.tasks[task_name],
-            ActiveWorker(conn, self._codec, self.tasks),
-        )
+        handler = self._registry.handlers[task_name]
         try:
-            resp = await self._codec.invoke_task(request.call, handler)
+            resp = await self._registry.codec.invoke_task(
+                request.call,
+                handler,
+                ActiveWorker(conn, self._registry),
+            )
         except Defer as e:
             return e
         return Response(payload=resp)
 
 
-class ActiveWorker:
+class ActiveWorker[C = Any]:
     _connection: Connection
-    _codec: Codec
-    _handlers: TaskCollection
+    _registry: Registry[C]
 
-    def __init__(self, conn: Connection, codec: Codec, tasks: TaskCollection):
+    def __init__(self, conn: Connection, registry: Registry[C]):
         self._connection = conn
-        self._codec = codec
-        self._handlers = tasks
+        self._registry = registry
 
     @overload
     def call[**P, R](
         self,
-        task_spec: Callable[Concatenate[ActiveWorker, P], Awaitable[R]],
-        *,
-        topic: str | None = None,
-    ) -> Callable[P, Awaitable[R]]: ...
-    @overload
-    def call[**P, R](
-        self,
-        task_spec: Callable[P, Awaitable[R]],
+        task_spec: Task[C, P, R],
         *,
         topic: str | None = None,
     ) -> Callable[P, Awaitable[R]]: ...
@@ -160,16 +139,16 @@ class ActiveWorker:
         Do not call this unless you are, yourself, already inside a brrr task.
 
         """
-        task_name = self._handlers.spec2name(task_spec)
+        task_name = self._registry.handlers.spec2name(task_spec)
 
         async def f(*args: Any, **kwargs: Any) -> Any:
-            call = self._codec.encode_call(task_name, args, kwargs)
+            call = self._registry.codec.encode_call(task_name, args, kwargs)
             try:
                 payload = await self._connection._memory.get_value(call.call_hash)
             except NotFoundError:
                 raise Defer([DeferredCall(topic, call)])
             else:
-                return self._codec.decode_return(task_name, payload)
+                return self._registry.codec.decode_return(task_name, payload)
 
         return f
 
