@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable
 
 from brrr.call import Call
 
+if TYPE_CHECKING:
+    from brrr.app import ActiveWorker, Task
 
-class Codec(ABC):
+
+class Codec[C](ABC):
     """Codec for values that pass around the brrr datastore.
 
     If you want inter-language calling you'll need to ensure both languages
@@ -28,7 +31,10 @@ class Codec(ABC):
 
     @abstractmethod
     async def invoke_task(
-        self, call: Call, task: Callable[..., Awaitable[Any]]
+        self,
+        call: Call,
+        task: Task[C, ..., Awaitable[Any]],
+        active_worker: ActiveWorker[C],
     ) -> bytes:
         raise NotImplementedError()
 

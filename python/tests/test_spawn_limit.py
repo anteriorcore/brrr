@@ -4,7 +4,7 @@ import brrr
 import pytest
 from brrr import ActiveWorker, AppWorker, SpawnLimitError
 from brrr.backends.in_memory import InMemoryByteStore, InMemoryQueue
-from brrr.pickle_codec import PickleCodec
+from brrr.demo_pickle_codec import DemoPickleCodec
 
 from .parametrize import names
 
@@ -24,7 +24,9 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
 
     async with brrr.serve(queue, store, store) as conn:
         conn._spawn_limit = 100
-        app = AppWorker(handlers={task_name: foo}, codec=PickleCodec(), connection=conn)
+        app = AppWorker(
+            handlers={task_name: foo}, codec=DemoPickleCodec(), connection=conn
+        )
         await app.schedule(task_name, topic=topic)(conn._spawn_limit + 3)
         queue.flush()
 
@@ -53,7 +55,7 @@ async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
         conn._spawn_limit = 100
         app = AppWorker(
             handlers={name_foo: foo, name_one: one},
-            codec=PickleCodec(),
+            codec=DemoPickleCodec(),
             connection=conn,
         )
         await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 4)
@@ -84,7 +86,7 @@ async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
         n = conn._spawn_limit + 1
         app = AppWorker(
             handlers={name_foo: foo, name_one: one},
-            codec=PickleCodec(),
+            codec=DemoPickleCodec(),
             connection=conn,
         )
 
@@ -127,7 +129,7 @@ async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
         conn._spawn_limit = 100
         app = AppWorker(
             handlers={name_foo: foo, name_one: one},
-            codec=PickleCodec(),
+            codec=DemoPickleCodec(),
             connection=conn,
         )
         await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 3)
@@ -162,7 +164,7 @@ async def test_spawn_limit_cached(topic: str, task_name: str) -> None:
         conn._spawn_limit = 100
         app = AppWorker(
             handlers={name_foo: foo, name_same: same},
-            codec=PickleCodec(),
+            codec=DemoPickleCodec(),
             connection=conn,
         )
         await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 5)

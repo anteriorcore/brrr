@@ -27,7 +27,7 @@ from types_aiobotocore_dynamodb import DynamoDBClient
 logger = logging.getLogger(__name__)
 routes = web.RouteTableDef()
 
-brrr_app: ContextVar[AppWorker] = ContextVar("brrr_demo.app")
+brrr_app: ContextVar[AppWorker[ActiveWorker]] = ContextVar("brrr_demo.app")
 
 topic_py = "brrr-py-demo"
 topic_ts = "brrr-ts-demo"
@@ -48,7 +48,7 @@ async def calc_and_print(app: ActiveWorker, op: str, n: str, salt=None):
     return result
 
 
-class JsonKwargsCodec(Codec):
+class DemoJsonKwargsCodec(Codec[ActiveWorker]):
     def encode_call(self, task_name: str, args: tuple, kwargs: dict) -> Call:
         if args:
             raise ValueError("This codec only supports keyword arguments")
@@ -56,9 +56,9 @@ class JsonKwargsCodec(Codec):
         call_hash = self._hash_call(task_name, kwargs)
         return Call(task_name=task_name, payload=payload, call_hash=call_hash)
 
-    async def invoke_task(self, call: Call, task) -> bytes:
+    async def invoke_task(self, call: Call, task, active_worker: ActiveWorker) -> bytes:
         [kwargs] = json.loads(call.payload.decode())
-        result = await task(**kwargs)
+        result = await task(active_worker, **kwargs)
         return self._json_bytes(result)
 
     def decode_return(self, task_name: str, payload: bytes) -> Any:
@@ -130,18 +130,18 @@ async def with_brrr_resources() -> AsyncIterator[tuple[RedisQueue, DynamoDbMemSt
 @asynccontextmanager
 async def with_brrr(
     reset_backends,
-) -> AsyncIterator[tuple[brrr.Server, brrr.AppWorker]]:
+) -> AsyncIterator[tuple[brrr.Server, brrr.AppWorker[ActiveWorker]]]:
     async with with_brrr_resources() as (redis, dynamo):
         if reset_backends:
             await redis.setup()
             await dynamo.create_table()
         async with brrr.serve(redis, dynamo, redis) as conn:
-            app = AppWorker(
+            app = AppWorker[ActiveWorker](
                 handlers=dict(
                     hello=hello,
                     calc_and_print=calc_and_print,
                 ),
-                codec=JsonKwargsCodec(),
+                codec=DemoJsonKwargsCodec(),
                 connection=conn,
             )
             token = brrr_app.set(app)
@@ -164,7 +164,7 @@ async def get_task_result(request: web.BaseRequest):
     kwargs = dict(request.query)
 
     task_name = request.match_info["task_name"]
-    if task_name not in brrr_app.get().tasks:
+    if task_name not in brrr_app.get()._registry.handlers:
         return response(404, {"error": "No such task"})
 
     try:
@@ -179,7 +179,7 @@ async def schedule_task(request: web.BaseRequest):
     kwargs = dict(request.query)
 
     task_name = request.match_info["task_name"]
-    if task_name not in brrr_app.get().tasks:
+    if task_name not in brrr_app.get()._registry.handlers:
         return response(404, {"error": "No such task"})
 
     await brrr_app.get().schedule(task_name, topic=topic_py)(**kwargs)
