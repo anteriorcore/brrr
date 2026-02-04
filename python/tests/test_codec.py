@@ -75,7 +75,9 @@ async def test_codec_api() -> None:
         assert val == sum(range(9))
         return val
 
-    b = LocalBrrr(topic=TOPIC, handlers=dict(foo=foo, plus=plus), codec=codec)
+    b = LocalBrrr[ActiveWorker](
+        topic=TOPIC, handlers=dict(foo=foo, plus=plus), codec=codec
+    )
     await b.run("foo")()
 
     codec.encode_call.assert_has_calls(

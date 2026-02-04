@@ -9,13 +9,13 @@ from .codec import Codec
 from .connection import Server, serve
 
 
-class LocalApp:
+class LocalApp[C]:
     """
     Low(er)-level primitive for local dev, mimics App* types.
     """
 
     def __init__(
-        self, *, topic: str, conn: Server, queue: InMemoryQueue, app: AppWorker
+        self, *, topic: str, conn: Server, queue: InMemoryQueue, app: AppWorker[C]
     ) -> None:
         self._conn = conn
         self._app = app
@@ -34,9 +34,9 @@ class LocalApp:
 
 
 @asynccontextmanager
-async def local_app(
-    topic: str, handlers: Mapping[str, Task[..., Any]], codec: Codec
-) -> AsyncIterator[LocalApp]:
+async def local_app[C](
+    topic: str, handlers: Mapping[str, Task[C, ..., Any]], codec: Codec[C]
+) -> AsyncIterator[LocalApp[C]]:
     """
     Helper function for unit tests which use brrr
     """
@@ -48,7 +48,7 @@ async def local_app(
         yield LocalApp(topic=topic, conn=conn, queue=queue, app=app)
 
 
-class LocalBrrr:
+class LocalBrrr[C]:
     """Helper class for your unit tests to use an ephemeral in-memory brrr.
 
     >>> async def plus(app: brrr.ActiveWorker, x: int, y: int) -> int: return x + y
@@ -63,13 +63,13 @@ class LocalBrrr:
     """
 
     def __init__(
-        self, topic: str, handlers: Mapping[str, Task[..., Any]], codec: Codec
+        self, topic: str, handlers: Mapping[str, Task[C, ..., Any]], codec: Codec[C]
     ):
         self.topic = topic
         self.handlers = handlers
         self.codec = codec
 
-    def run[**P, R](self, f: Task[P, R] | str) -> Callable[P, Awaitable[R]]:
+    def run[**P, R](self, f: Task[C, P, R] | str) -> Callable[P, Awaitable[R]]:
         """Create an ephemeral brrr app and runt his entire task to completion.
 
         Named `run' to emphasize this is different from app.call.  This isn't

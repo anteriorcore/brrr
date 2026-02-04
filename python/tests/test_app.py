@@ -39,7 +39,7 @@ async def test_app_worker(topic: str, task_name: str) -> None:
         return await app.call(bar, topic=topic)(a + 1) + 1
 
     async with brrr.serve(queue, store, store) as conn:
-        app = AppWorker(
+        app = AppWorker[ActiveWorker](
             handlers={name_foo: foo, name_bar: bar},
             codec=PickleCodec(),
             connection=conn,
@@ -123,7 +123,7 @@ async def _call_nested_gather(
         typing.assert_type(result, list[int])
         return result
 
-    handlers: dict[str, Task[..., Any]] = dict(foo=foo, bar=bar, top=top)
+    handlers: dict[str, Task[ActiveWorker, ..., Any]] = dict(foo=foo, bar=bar, top=top)
     b = LocalBrrr(topic=topic, handlers=handlers, codec=PickleCodec())
     await b.run(top)([3, 4])
 
@@ -532,7 +532,7 @@ async def test_app_handler_names(topic: str, task_name: str) -> None:
         # Both are the same.
         return await app.call(foo)(a) * cast(int, await app.call(name_foo)(a))
 
-    handlers: dict[str, Task[..., Any]] = {
+    handlers: dict[str, Task[ActiveWorker, ..., Any]] = {
         name_foo: foo,
         name_bar: bar,
     }
@@ -558,7 +558,7 @@ async def test_app_subclass(topic: str) -> None:
 
     # Hijack any defers and change them to a different task.  Just to prove a
     # point about middleware, nothing particularly realistic.
-    class MyAppWorker(AppWorker):
+    class MyAppWorker(AppWorker[ActiveWorker]):
         async def handle(self, request: Request, conn: Connection) -> Response | Defer:
             resp = await super().handle(request, conn)
             if isinstance(resp, Response):

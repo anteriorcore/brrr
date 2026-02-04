@@ -1,12 +1,14 @@
 import hashlib
 import pickle
-from typing import Any, Callable
+from typing import Any
+
+from brrr.app import ActiveWorker, Task
 
 from .call import Call
 from .codec import Codec
 
 
-class PickleCodec(Codec):
+class PickleCodec(Codec[ActiveWorker]):
     """Very liberal codec, based on hopes and dreams.
 
     Don't use this in production because you run the risk of non-deterministic
@@ -30,9 +32,14 @@ class PickleCodec(Codec):
         call_hash = self._hash_call(task_name, args, kwargs)
         return Call(task_name=task_name, payload=payload, call_hash=call_hash)
 
-    async def invoke_task(self, call: Call, task: Callable[..., Any]) -> bytes:
+    async def invoke_task(
+        self,
+        call: Call,
+        task: Task[ActiveWorker, ..., Any],
+        active_worker: ActiveWorker,
+    ) -> bytes:
         args, kwargs = pickle.loads(call.payload)
-        return pickle.dumps(await task(*args, **kwargs))
+        return pickle.dumps(await task(active_worker, *args, **kwargs))
 
     def decode_return(self, task_name: str, payload: bytes) -> Any:
         return pickle.loads(payload)
