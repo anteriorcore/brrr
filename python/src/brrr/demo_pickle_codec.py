@@ -8,8 +8,10 @@ from .call import Call
 from .codec import Codec
 
 
-class PickleCodec(Codec[ActiveWorker]):
-    """Very liberal codec, based on hopes and dreams.
+class DemoPickleCodec(Codec[ActiveWorker]):
+    """
+    An opinionated codec for demo/testing purposes. It expects `ActiveWorker` as
+    a context.
 
     Don't use this in production because you run the risk of non-deterministic
     serialization, e.g. dicts with arbitrary order.
