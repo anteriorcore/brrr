@@ -89,16 +89,12 @@
           processComposeModules = {
             brrr-demo = inputs.services-flake.lib.multiService ./nix/brrr-demo.service.nix;
             dynamodb = import ./nix/dynamodb.service.nix;
-            localstack = import ./nix/localstack.service.nix;
             default =
               { pkgs, ... }:
               {
                 imports = with self.processComposeModules; [
                   brrr-demo
                   dynamodb
-                  # Unused for now but will probably be reintroduced for an SQS demo
-                  # soon.
-                  localstack
                 ];
                 services =
                   let
