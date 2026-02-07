@@ -49,4 +49,6 @@ from .only import (
 from .only import (
     only as only,
 )
+from .queue import Message as Message
+from .queue import QueueIsClosed as QueueIsClosed
 from .store import NotFoundError as NotFoundError
