@@ -6,10 +6,6 @@ updates:
       default-days: 10
     schedule:
       interval: "weekly"
-    groups:
-      all:
-        patterns:
-          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/" # Location of package manifests
@@ -22,7 +18,3 @@ updates:
       default-days: 10
     schedule:
       interval: "weekly"
-    groups:
-      all:
-        patterns:
-          - "*"
