@@ -34,7 +34,7 @@ Highlights:
 ```python
 import brrr
 
-async def fib(app: brrr.ActiveWorker, n: int, salt=None):
+async def fib(app: DemoContext, n: int, salt=None):
     match n:
         case 0: return 0
         case 1: return 1
@@ -44,13 +44,13 @@ async def fib(app: brrr.ActiveWorker, n: int, salt=None):
         ))
 
 
-async def fib_and_print(app: brrr.ActiveWorker, n: str):
+async def fib_and_print(app: DemoContext, n: str):
     f = await app.call(fib)(int(n))
     print(f"fib({n}) = {f}", flush=True)
     return f
 
 
-async def hello(app: brrr.ActiveWorker, greetee: str):
+async def hello(app: DemoContext, greetee: str):
     greeting = f"Hello, {greetee}!"
     print(greeting, flush=True)
     return greeting
@@ -146,6 +146,10 @@ Brrr has no central scheduling agent. Workers contend for the same jobs and the 
 - `typescript`
 
 Workers have to specify on which topic(s) they listen, and once a worker listens on a topic it must be able to handle _every_ incoming job.
+
+## Context
+
+Brrr task is defined as: a function that takes user-defined "context" as a first argument. This is completely user defined, and you're responsible for creating and injecting the context in `invokeTask` method in the codec. Note that this context is created pre-request - this is usful for injecting e.g. an API client, with the auth info from the request.
 
 ## Copyright & License
 

@@ -29,7 +29,7 @@ routes = web.RouteTableDef()
 
 type DemoContext = ActiveWorker[DemoContext]
 
-brrr_app: ContextVar[AppWorker[ActiveWorker]] = ContextVar("brrr_demo.app")
+brrr_app: ContextVar[AppWorker[DemoContext]] = ContextVar("brrr_demo.app")
 
 topic_py = "brrr-py-demo"
 topic_ts = "brrr-ts-demo"
