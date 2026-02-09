@@ -7,7 +7,6 @@ from typing import Any, cast
 import brrr
 import pytest
 from brrr import (
-    ActiveWorker,
     AppConsumer,
     AppWorker,
     Connection,
@@ -19,10 +18,12 @@ from brrr import (
     Task,
 )
 from brrr.backends.in_memory import InMemoryByteStore, InMemoryQueue
-from brrr.demo_pickle_codec import DemoPickleCodec
+from brrr.demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
 from brrr.local_app import LocalBrrr, local_app
 
 from .parametrize import names
+
+type TestContext = DemoPickleCodecContext
 
 
 async def test_app_worker(topic: str, task_name: str) -> None:
@@ -31,15 +32,15 @@ async def test_app_worker(topic: str, task_name: str) -> None:
 
     name_foo, name_bar = names(task_name, ("foo", "bar"))
 
-    async def bar(app: ActiveWorker, a: int) -> int:
+    async def bar(app: TestContext, a: int) -> int:
         assert a == 123
         return 456
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         return await app.call(bar, topic=topic)(a + 1) + 1
 
     async with brrr.serve(queue, store, store) as conn:
-        app = AppWorker[ActiveWorker](
+        app = AppWorker[TestContext](
             handlers={name_foo: foo, name_bar: bar},
             codec=DemoPickleCodec(),
             connection=conn,
@@ -57,7 +58,7 @@ async def test_app_consumer(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = InMemoryQueue([topic])
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         return a * a
 
     # Seed the db with a known value
@@ -82,11 +83,11 @@ async def test_app_consumer(topic: str, task_name: str) -> None:
 async def test_local_brrr(topic: str, task_name: str) -> None:
     name_foo, name_bar = names(task_name, ("foo", "bar"))
 
-    async def bar(app: ActiveWorker, a: int) -> int:
+    async def bar(app: TestContext, a: int) -> int:
         assert a == 123
         return 456
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         return await app.call(bar, topic=topic)(a + 1) + 1
 
     b = LocalBrrr(
@@ -104,26 +105,26 @@ async def _call_nested_gather(
     """
     calls = []
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         calls.append(f"foo({a})")
         return a * 2
 
-    async def bar(app: ActiveWorker, a: int) -> int:
+    async def bar(app: TestContext, a: int) -> int:
         calls.append(f"bar({a})")
         return a - 1
 
-    async def not_a_brrr_task(app: ActiveWorker, a: int) -> int:
+    async def not_a_brrr_task(app: TestContext, a: int) -> int:
         b = await app.call(foo)(a)
         return await app.call(bar)(b)
 
-    async def top(app: ActiveWorker, xs: list[int]) -> list[int]:
+    async def top(app: TestContext, xs: list[int]) -> list[int]:
         calls.append(f"top({xs})")
         gather = app.gather if use_brrr_gather else asyncio.gather
         result = await gather(*[not_a_brrr_task(app, x) for x in xs])
         typing.assert_type(result, list[int])
         return result
 
-    handlers: dict[str, Task[ActiveWorker, ..., Any]] = dict(foo=foo, bar=bar, top=top)
+    handlers: dict[str, Task[TestContext, ..., Any]] = dict(foo=foo, bar=bar, top=top)
     b = LocalBrrr(topic=topic, handlers=handlers, codec=DemoPickleCodec())
     await b.run(top)([3, 4])
 
@@ -189,10 +190,10 @@ async def test_topics_separate_app_same_conn(topic: str, task_name: str) -> None
     queue = InMemoryQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
-    async def one(app: ActiveWorker, a: int) -> int:
+    async def one(app: TestContext, a: int) -> int:
         return a + 5
 
-    async def two(app: ActiveWorker, a: int) -> None:
+    async def two(app: TestContext, a: int) -> None:
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
         await queue.close()
@@ -216,10 +217,10 @@ async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> 
     queue = InMemoryQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
-    async def one(app: ActiveWorker, a: int) -> int:
+    async def one(app: TestContext, a: int) -> int:
         return a + 5
 
-    async def two(app: ActiveWorker, a: int) -> None:
+    async def two(app: TestContext, a: int) -> None:
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
         await queue.close()
@@ -246,10 +247,10 @@ async def test_topics_same_app(topic: str, task_name: str) -> None:
     queue = InMemoryQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
-    async def one(app: ActiveWorker, a: int) -> int:
+    async def one(app: TestContext, a: int) -> int:
         return a + 5
 
-    async def two(app: ActiveWorker, a: int) -> None:
+    async def two(app: TestContext, a: int) -> None:
         # N.B.: b2 can use its own brrr instance
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
@@ -272,7 +273,7 @@ async def test_weird_names(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = InMemoryQueue([topic])
 
-    async def double(app: ActiveWorker, x: int) -> int:
+    async def double(app: TestContext, x: int) -> int:
         await queue.close()
         return x + x
 
@@ -304,7 +305,7 @@ async def test_stop_when_empty(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = InMemoryQueue([topic])
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         calls_pre[a] += 1
         if a == 0:
             return 0
@@ -336,7 +337,7 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
 
     top_calls = 0
 
-    async def block(app: ActiveWorker, a: int) -> int:
+    async def block(app: TestContext, a: int) -> int:
         nonlocal barrier
         if barrier is not None:
             await barrier.wait()
@@ -350,7 +351,7 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
         barrier = None
         return a
 
-    async def top(app: ActiveWorker) -> None:
+    async def top(app: TestContext) -> None:
         gather = app.gather if use_gather else asyncio.gather
         await gather(*(app.call(block)(x) for x in range(parallel)))
 
@@ -383,7 +384,7 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
 
     name_top, name_fib = names(task_name, ("top", "fib"))
 
-    async def fib(app: ActiveWorker, a: int) -> int:
+    async def fib(app: TestContext, a: int) -> int:
         if a < 2:
             return a
         return sum(
@@ -393,7 +394,7 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
             )
         )
 
-    async def top(app: ActiveWorker) -> None:
+    async def top(app: TestContext) -> None:
         n = await app.call(fib)(1000)
         assert (
             n
@@ -423,7 +424,7 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
 async def test_debounce_child(topic: str, task_name: str) -> None:
     calls = Counter[int]()
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         calls[a] += 1
         if a == 0:
             return a
@@ -441,11 +442,11 @@ async def test_debounce_child(topic: str, task_name: str) -> None:
 async def test_no_debounce_parent(topic: str) -> None:
     calls = Counter[str]()
 
-    async def one(app: ActiveWorker, _: int) -> int:
+    async def one(app: TestContext, _: int) -> int:
         calls["one"] += 1
         return 1
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         calls["foo"] += 1
         # Different argument to avoid debouncing children
         return sum(await app.gather(*map(app.call(one), range(a))))
@@ -466,7 +467,7 @@ async def test_app_loop_resumable(topic: str) -> None:
     class MyError(Exception):
         pass
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         nonlocal errors
         if errors:
             errors -= 1
@@ -502,14 +503,14 @@ async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
     class MyError(Exception):
         pass
 
-    async def bar(app: ActiveWorker, a: int) -> int:
+    async def bar(app: TestContext, a: int) -> int:
         nonlocal errors
         if errors:
             errors -= 1
             raise MyError("retry")
         return a
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         return await app.call(bar)(a)
 
     async with brrr.serve(queue, store, store) as conn:
@@ -533,14 +534,14 @@ async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
 async def test_app_handler_names(topic: str, task_name: str) -> None:
     name_foo, name_bar = names(task_name, ("foo", "bar"))
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         return a * a
 
-    async def bar(app: ActiveWorker, a: int) -> int:
+    async def bar(app: TestContext, a: int) -> int:
         # Both are the same.
         return await app.call(foo)(a) * cast(int, await app.call(name_foo)(a))
 
-    handlers: dict[str, Task[ActiveWorker, ..., Any]] = {
+    handlers: dict[str, Task[TestContext, ..., Any]] = {
         name_foo: foo,
         name_bar: bar,
     }
@@ -557,18 +558,18 @@ async def test_app_subclass(topic: str) -> None:
     store = InMemoryByteStore()
     queue = InMemoryQueue([topic])
 
-    async def bar(app: ActiveWorker, a: int) -> int:
+    async def bar(app: TestContext, a: int) -> int:
         return a + 1
 
-    async def baz(app: ActiveWorker, a: int) -> int:
+    async def baz(app: TestContext, a: int) -> int:
         return a + 10
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         return await app.call(bar)(a)
 
     # Hijack any defers and change them to a different task.  Just to prove a
     # point about middleware, nothing particularly realistic.
-    class MyAppWorker(AppWorker[ActiveWorker]):
+    class MyAppWorker(AppWorker[TestContext]):
         async def handle(self, request: Request, conn: Connection) -> Response | Defer:
             resp = await super().handle(request, conn)
             if isinstance(resp, Response):

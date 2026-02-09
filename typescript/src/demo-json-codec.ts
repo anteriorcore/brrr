@@ -9,6 +9,8 @@ type Json = {
   stringify: (value: unknown) => string;
 };
 
+export type DemoJsonCodecContext = ActiveWorker<DemoJsonCodecContext>;
+
 /**
  * An opinionated codec for demo/testing purposes.
  *
@@ -21,7 +23,7 @@ type Json = {
  * reccommended for production use; the primary purpose of this codec is
  * executable documentation.
  */
-export class DemoJsonCodec implements Codec<ActiveWorker> {
+export class DemoJsonCodec implements Codec<DemoJsonCodecContext> {
   public static readonly algorithm = "sha256";
   public static readonly binaryToTextEncoding =
     "hex" satisfies BinaryToTextEncoding;
@@ -50,8 +52,8 @@ export class DemoJsonCodec implements Codec<ActiveWorker> {
 
   public async invokeTask<A extends unknown[], R>(
     call: Call,
-    handler: Task<ActiveWorker, A, R>,
-    activeWorker: ActiveWorker,
+    handler: Task<DemoJsonCodecContext, A, R>,
+    activeWorker: DemoJsonCodecContext,
   ): Promise<Uint8Array> {
     const decoded = decoder.decode(call.payload);
     const args = this.json.parse(decoded) as A;

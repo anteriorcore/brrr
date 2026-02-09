@@ -53,10 +53,10 @@ class AppConsumer[C]:
         self,
         codec: Codec[C],
         connection: Connection,
-        handlers: Mapping[str, Task[C, ..., Any]] = {},
+        handlers: Mapping[str, Task[C, ..., Any]] | None = None,
     ):
         self._connection = connection
-        self._registry = Registry(codec, TaskCollection(handlers))
+        self._registry = Registry(codec, TaskCollection(handlers or {}))
 
     @overload
     def schedule[**P, R](
@@ -112,7 +112,7 @@ class AppWorker[C](AppConsumer[C]):
         return Response(payload=resp)
 
 
-class ActiveWorker[C = Any]:
+class ActiveWorker[C]:
     _connection: Connection
     _registry: Registry[C]
 

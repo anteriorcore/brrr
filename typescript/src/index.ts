@@ -20,7 +20,7 @@ export {
 } from "./connection.ts";
 export type { Publisher, Subscriber } from "./emitter.ts";
 export { LocalApp, LocalBrrr } from "./local-app.ts";
-export { DemoJsonCodec } from "./demo-json-codec.ts";
+export { DemoJsonCodec, type DemoJsonCodecContext } from "./demo-json-codec.ts";
 export type { Store, Cache } from "./store.ts";
 export { BrrrShutdownSymbol, BrrrTaskDoneEventSymbol } from "./symbol.ts";
 export {

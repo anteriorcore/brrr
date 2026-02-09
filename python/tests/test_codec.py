@@ -4,12 +4,13 @@ from collections import Counter
 from typing import Any
 from unittest.mock import Mock, call
 
-from brrr.app import ActiveWorker
 from brrr.call import Call
-from brrr.demo_pickle_codec import DemoPickleCodec
+from brrr.demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
 from brrr.local_app import LocalBrrr
 
 TOPIC = "test"
+
+type TestContext = DemoPickleCodecContext
 
 
 async def test_codec_key_no_args() -> None:
@@ -25,12 +26,12 @@ async def test_codec_key_no_args() -> None:
 
     codec.encode_call = Mock(side_effect=encode_call)  # type: ignore[method-assign]
 
-    async def same(app: ActiveWorker, a: int) -> int:
+    async def same(app: TestContext, a: int) -> int:
         assert a == 1
         calls[f"same({a})"] += 1
         return a
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         calls[f"foo({a})"] += 1
 
         val = 0
@@ -62,10 +63,10 @@ async def test_codec_determinstic() -> None:
 async def test_codec_api() -> None:
     codec = Mock(wraps=DemoPickleCodec())
 
-    async def plus(app: ActiveWorker, x: int, y: str) -> int:
+    async def plus(app: TestContext, x: int, y: str) -> int:
         return x + int(y)
 
-    async def foo(app: ActiveWorker) -> int:
+    async def foo(app: TestContext) -> int:
         val = (
             await app.call(plus)(1, "2")
             + await app.call(plus)(x=3, y="4")
@@ -75,7 +76,7 @@ async def test_codec_api() -> None:
         assert val == sum(range(9))
         return val
 
-    b = LocalBrrr[ActiveWorker](
+    b = LocalBrrr[TestContext](
         topic=TOPIC, handlers=dict(foo=foo, plus=plus), codec=codec
     )
     await b.run("foo")()

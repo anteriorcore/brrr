@@ -27,6 +27,8 @@ from types_aiobotocore_dynamodb import DynamoDBClient
 logger = logging.getLogger(__name__)
 routes = web.RouteTableDef()
 
+type DemoContext = ActiveWorker[DemoContext]
+
 brrr_app: ContextVar[AppWorker[ActiveWorker]] = ContextVar("brrr_demo.app")
 
 topic_py = "brrr-py-demo"
@@ -36,19 +38,19 @@ topic_ts = "brrr-ts-demo"
 ### Brrr handlers
 
 
-async def hello(app: ActiveWorker, greetee: str):
+async def hello(app: DemoContext, greetee: str):
     greeting = f"Hello, {greetee}!"
     print(greeting, flush=True)
     return greeting
 
 
-async def calc_and_print(app: ActiveWorker, op: str, n: str, salt=None):
+async def calc_and_print(app: DemoContext, op: str, n: str, salt=None):
     result = await app.call(op, topic=topic_ts)(n=int(n), salt=salt)
     print(f"{op}({n}) = {result}", flush=True)
     return result
 
 
-class DemoJsonKwargsCodec(Codec[ActiveWorker]):
+class DemoJsonKwargsCodec(Codec[DemoContext]):
     def encode_call(self, task_name: str, args: tuple, kwargs: dict) -> Call:
         if args:
             raise ValueError("This codec only supports keyword arguments")
@@ -56,7 +58,9 @@ class DemoJsonKwargsCodec(Codec[ActiveWorker]):
         call_hash = self._hash_call(task_name, kwargs)
         return Call(task_name=task_name, payload=payload, call_hash=call_hash)
 
-    async def invoke_task(self, call: Call, task, active_worker: ActiveWorker) -> bytes:
+    async def invoke_task(
+        self, call: Call, task, active_worker: ActiveWorker[DemoContext]
+    ) -> bytes:
         [kwargs] = json.loads(call.payload.decode())
         result = await task(active_worker, **kwargs)
         return self._json_bytes(result)
@@ -130,13 +134,13 @@ async def with_brrr_resources() -> AsyncIterator[tuple[RedisQueue, DynamoDbMemSt
 @asynccontextmanager
 async def with_brrr(
     reset_backends,
-) -> AsyncIterator[tuple[brrr.Server, brrr.AppWorker[ActiveWorker]]]:
+) -> AsyncIterator[tuple[brrr.Server, brrr.AppWorker[DemoContext]]]:
     async with with_brrr_resources() as (redis, dynamo):
         if reset_backends:
             await redis.setup()
             await dynamo.create_table()
         async with brrr.serve(redis, dynamo, redis) as conn:
-            app = AppWorker[ActiveWorker](
+            app = AppWorker[DemoContext](
                 handlers=dict(
                     hello=hello,
                     calc_and_print=calc_and_print,

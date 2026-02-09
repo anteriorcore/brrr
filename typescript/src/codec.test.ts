@@ -64,7 +64,7 @@ export async function codecContractTest<C>(
     await suite(
       "round trip: encodeCall -> invokeTask -> decodeReturn",
       async () => {
-        async function identify<T>(ctx: C, a: T): Promise<T> {
+        async function identify<T>(_: C, a: T): Promise<T> {
           return a;
         }
 

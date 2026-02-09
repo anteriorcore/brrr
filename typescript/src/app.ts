@@ -114,7 +114,7 @@ export class AppWorker<C> extends AppConsumer<C> {
   };
 }
 
-export class ActiveWorker<C = any> {
+export class ActiveWorker<C> {
   private readonly connection: Connection;
   private readonly registry: Registry<C>;
 

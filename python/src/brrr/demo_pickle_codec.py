@@ -7,8 +7,10 @@ from brrr.app import ActiveWorker, Task
 from .call import Call
 from .codec import Codec
 
+type DemoPickleCodecContext = ActiveWorker[DemoPickleCodecContext]
 
-class DemoPickleCodec(Codec[ActiveWorker]):
+
+class DemoPickleCodec(Codec[DemoPickleCodecContext]):
     """
     An opinionated codec for demo/testing purposes. It expects `ActiveWorker` as
     a context.
@@ -37,8 +39,8 @@ class DemoPickleCodec(Codec[ActiveWorker]):
     async def invoke_task(
         self,
         call: Call,
-        task: Task[ActiveWorker, ..., Any],
-        active_worker: ActiveWorker,
+        task: Task[DemoPickleCodecContext, ..., Any],
+        active_worker: ActiveWorker[DemoPickleCodecContext],
     ) -> bytes:
         args, kwargs = pickle.loads(call.payload)
         return pickle.dumps(await task(active_worker, *args, **kwargs))
