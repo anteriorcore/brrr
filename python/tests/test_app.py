@@ -18,6 +18,8 @@ from brrr import (
     Task,
 )
 from brrr.backends.in_memory import InMemoryByteStore, InMemoryQueue
+from brrr.call import Call
+from brrr.codec import Codec
 from brrr.demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
 from brrr.local_app import LocalBrrr, local_app
 
@@ -591,3 +593,45 @@ async def test_app_subclass(topic: str) -> None:
         queue.flush()
         await conn.loop(topic, app.handle)
         assert await app.read(foo)(4) == 14
+
+
+async def test_custom_context(topic: str) -> None:
+    """
+    Inject task name as a custom context.
+    """
+    store = InMemoryByteStore()
+    queue = InMemoryQueue([topic])
+
+    class MyCodec(Codec[str]):
+        def encode_call(
+            self, task_name: str, args: tuple[Any, ...], kwargs: dict[Any, Any]
+        ) -> Call:
+            return Call(task_name=task_name, payload=b"", call_hash=task_name)
+
+        async def invoke_task(
+            self, call: Call, handler: Any, active_worker: Any
+        ) -> bytes:
+            result: str = await handler(call.task_name)
+            return result.encode("utf-8")
+
+        def decode_return(self, task_name: str, payload: bytes) -> Any:
+            return payload.decode("utf-8")
+
+    async def foo(ctx: str) -> str:
+        return ctx
+
+    async def bar(ctx: str) -> str:
+        return ctx
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={"foo": foo, "bar": bar},
+            codec=MyCodec(),
+            connection=conn,
+        )
+        await app.schedule(foo, topic=topic)()
+        await app.schedule(bar, topic=topic)()
+        queue.flush()
+        await conn.loop(topic, app.handle)
+        assert await app.read(foo)() == "foo"
+        assert await app.read(bar)() == "bar"

@@ -1,6 +1,12 @@
 import { beforeEach, suite, test } from "node:test";
 import { strictEqual } from "node:assert";
-import { AppConsumer, AppWorker, type Handlers } from "./app.ts";
+import {
+  ActiveWorker,
+  AppConsumer,
+  AppWorker,
+  type Handlers,
+  type Task,
+} from "./app.ts";
 import {
   type Connection,
   Defer,
@@ -24,6 +30,8 @@ import type { Publisher, Subscriber } from "./emitter.ts";
 import { BrrrShutdownSymbol, BrrrTaskDoneEventSymbol } from "./symbol.ts";
 import { parse, stringify } from "superjson";
 import { matrixSuite } from "./fixture.test.ts";
+import type { Codec } from "./codec.ts";
+import { decoder, encoder } from "./internal-codecs.ts";
 
 type TestContext = DemoJsonCodecContext;
 
@@ -654,6 +662,54 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         strictEqual(n, 1);
         strictEqual(final, server.spawnLimit + 5);
       });
+    });
+
+    await test("custom context", async () => {
+      // Inject task name as a custom context.
+
+      class MyCodec implements Codec<string> {
+        public async decodeReturn(
+          _: string,
+          payload: Uint8Array,
+        ): Promise<unknown> {
+          return decoder.decode(payload);
+        }
+
+        public async encodeCall<A extends unknown[]>(
+          taskName: string,
+          _args: A,
+        ): Promise<Call> {
+          return { taskName, payload: new Uint8Array(), callHash: taskName };
+        }
+
+        public async invokeTask<A extends unknown[], R>(
+          call: Call,
+          handler: Task<string, A, R>,
+          _activeWorker: ActiveWorker<string>,
+        ): Promise<Uint8Array> {
+          // @ts-expect-error type cheat for test.
+          const result: string = await handler(call.taskName);
+          return encoder.encode(result);
+        }
+      }
+
+      function foo(ctx: string) {
+        return ctx;
+      }
+
+      function bar(ctx: string) {
+        return ctx;
+      }
+
+      const codec = new MyCodec();
+      const server = new Server(store, cache, publisher);
+      const app = new AppWorker(codec, server, { foo, bar });
+
+      await app.schedule(foo, topic)();
+      await app.schedule(bar, topic)();
+      await server.loop(topic, app.handle, flusher);
+      strictEqual(await app.read(foo)(), "foo");
+      strictEqual(await app.read(bar)(), "bar");
     });
   });
 });

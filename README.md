@@ -149,7 +149,7 @@ Workers have to specify on which topic(s) they listen, and once a worker listens
 
 ## Context
 
-Brrr task is defined as: a function that takes user-defined "context" as a first argument. This is completely user defined, and you're responsible for creating and injecting the context in `invokeTask` method in the codec. Note that this context is created pre-request - this is usful for injecting e.g. an API client, with the auth info from the request.
+A brrr task takes user-defined "context" as its first argument. The context is created in the codec's `invokeTask` method, so you have full control over what context to inject. This is useful for, e.g. injecting dependencies like an authenticated API client.
 
 ## Copyright & License
 
