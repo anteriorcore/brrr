@@ -6,10 +6,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/index.ts",
-    "build": "rm -rf dist && cp -r src dist",
+    "build": "tsc",
     "test": "echo no tests"
   },
-  "bin": "dist/index.ts",
+  "bin": "src/index.ts",
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -19,7 +19,8 @@
     "tree-sitter-typescript": "^0.23.2"
   },
   "devDependencies": {
-    "@types/node": "^24.1.0"
+    "@types/node": "^24.1.0",
+    "typescript": "5.9.3"
   },
   "overrides": {
     "tree-sitter-typescript": {
