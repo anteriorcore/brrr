@@ -37,4 +37,6 @@ from .connection import (
 from .connection import (
     serve as serve,
 )
+from .queue import Message as Message
+from .queue import QueueIsClosed as QueueIsClosed
 from .store import NotFoundError as NotFoundError
