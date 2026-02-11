@@ -4,17 +4,18 @@ from collections import Counter
 from typing import Any
 from unittest.mock import Mock, call
 
-from brrr.app import ActiveWorker
 from brrr.call import Call
+from brrr.demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
 from brrr.local_app import LocalBrrr
-from brrr.pickle_codec import PickleCodec
 
 TOPIC = "test"
+
+type TestContext = DemoPickleCodecContext
 
 
 async def test_codec_key_no_args() -> None:
     calls = Counter[str]()
-    codec = PickleCodec()
+    codec = DemoPickleCodec()
 
     old = codec.encode_call
 
@@ -25,12 +26,12 @@ async def test_codec_key_no_args() -> None:
 
     codec.encode_call = Mock(side_effect=encode_call)  # type: ignore[method-assign]
 
-    async def same(app: ActiveWorker, a: int) -> int:
+    async def same(app: TestContext, a: int) -> int:
         assert a == 1
         calls[f"same({a})"] += 1
         return a
 
-    async def foo(app: ActiveWorker, a: int) -> int:
+    async def foo(app: TestContext, a: int) -> int:
         calls[f"foo({a})"] += 1
 
         val = 0
@@ -54,18 +55,18 @@ async def test_codec_key_no_args() -> None:
 
 
 async def test_codec_determinstic() -> None:
-    call1 = PickleCodec().encode_call("foo", (1, 2), dict(b=4, a=3))
-    call2 = PickleCodec().encode_call("foo", (1, 2), dict(a=3, b=4))
+    call1 = DemoPickleCodec().encode_call("foo", (1, 2), dict(b=4, a=3))
+    call2 = DemoPickleCodec().encode_call("foo", (1, 2), dict(a=3, b=4))
     assert call1.call_hash == call2.call_hash
 
 
 async def test_codec_api() -> None:
-    codec = Mock(wraps=PickleCodec())
+    codec = Mock(wraps=DemoPickleCodec())
 
-    async def plus(app: ActiveWorker, x: int, y: str) -> int:
+    async def plus(app: TestContext, x: int, y: str) -> int:
         return x + int(y)
 
-    async def foo(app: ActiveWorker) -> int:
+    async def foo(app: TestContext) -> int:
         val = (
             await app.call(plus)(1, "2")
             + await app.call(plus)(x=3, y="4")
@@ -75,7 +76,9 @@ async def test_codec_api() -> None:
         assert val == sum(range(9))
         return val
 
-    b = LocalBrrr(topic=TOPIC, handlers=dict(foo=foo, plus=plus), codec=codec)
+    b = LocalBrrr[TestContext](
+        topic=TOPIC, handlers=dict(foo=foo, plus=plus), codec=codec
+    )
     await b.run("foo")()
 
     codec.encode_call.assert_has_calls(

@@ -2,23 +2,28 @@ import { type BinaryToTextEncoding, createHash } from "node:crypto";
 import type { Call } from "./call.ts";
 import type { Codec } from "./codec.ts";
 import { decoder, encoder } from "./internal-codecs.ts";
+import { ActiveWorker, type Task } from "./app.ts";
 
 type Json = {
   parse: <T = unknown>(text: string) => T;
   stringify: (value: unknown) => string;
 };
 
+export type DemoJsonCodecContext = ActiveWorker<DemoJsonCodecContext>;
+
 /**
- * Naive JSON codec that uses built-in `JSON` for serialization and deserialization.
+ * An opinionated codec for demo/testing purposes.
  *
- * You can provide a custom JSON implementation if you want to support more datatypes.
+ * Uses built-in `JSON` for serialization and deserialization, and expects
+ *  `ActiveWorker` as a context. Can take custom JSON implementation to
+ * customize its behavior.
  *
  * It tries its best to ensure that the serialized data is deterministic by
  * sorting object keys recursively before serialization, but it's not
  * reccommended for production use; the primary purpose of this codec is
  * executable documentation.
  */
-export class NaiveJsonCodec implements Codec {
+export class DemoJsonCodec implements Codec<DemoJsonCodecContext> {
   public static readonly algorithm = "sha256";
   public static readonly binaryToTextEncoding =
     "hex" satisfies BinaryToTextEncoding;
@@ -38,7 +43,7 @@ export class NaiveJsonCodec implements Codec {
     taskName: string,
     args: A,
   ): Promise<Call> {
-    const sortedArgs = args.map(NaiveJsonCodec.sortObjectKeys);
+    const sortedArgs = args.map(DemoJsonCodec.sortObjectKeys);
     const data = this.json.stringify(sortedArgs);
     const payload = encoder.encode(data);
     const callHash = await this.hashCall(taskName, sortedArgs);
@@ -47,11 +52,12 @@ export class NaiveJsonCodec implements Codec {
 
   public async invokeTask<A extends unknown[], R>(
     call: Call,
-    task: (...args: A) => Promise<R>,
+    handler: Task<DemoJsonCodecContext, A, R>,
+    activeWorker: DemoJsonCodecContext,
   ): Promise<Uint8Array> {
     const decoded = decoder.decode(call.payload);
     const args = this.json.parse(decoded) as A;
-    const result = await task(...args);
+    const result = await handler(activeWorker, ...args);
     const resultJson = this.json.stringify(result);
     return encoder.encode(resultJson);
   }
@@ -61,9 +67,9 @@ export class NaiveJsonCodec implements Codec {
     args: A,
   ): Promise<string> {
     const data = this.json.stringify([taskName, args]);
-    return createHash(NaiveJsonCodec.algorithm)
+    return createHash(DemoJsonCodec.algorithm)
       .update(data)
-      .digest(NaiveJsonCodec.binaryToTextEncoding);
+      .digest(DemoJsonCodec.binaryToTextEncoding);
   }
 
   protected static sortObjectKeys<T>(unordered: T): T {
@@ -71,13 +77,13 @@ export class NaiveJsonCodec implements Codec {
       return unordered;
     }
     if (Array.isArray(unordered)) {
-      return unordered.map(NaiveJsonCodec.sortObjectKeys) as T;
+      return unordered.map(DemoJsonCodec.sortObjectKeys) as T;
     }
     const entries = Object.keys(unordered)
       .sort()
       .map((key) => [
         key,
-        NaiveJsonCodec.sortObjectKeys(unordered[key as keyof typeof unordered]),
+        DemoJsonCodec.sortObjectKeys(unordered[key as keyof typeof unordered]),
       ]);
     return Object.fromEntries(entries);
   }

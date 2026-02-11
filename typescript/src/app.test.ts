@@ -1,11 +1,11 @@
 import { beforeEach, suite, test } from "node:test";
 import { strictEqual } from "node:assert";
 import {
-  type ActiveWorker,
+  ActiveWorker,
   AppConsumer,
   AppWorker,
   type Handlers,
-  taskFn,
+  type Task,
 } from "./app.ts";
 import {
   type Connection,
@@ -20,7 +20,7 @@ import {
   InMemoryEmitter,
   InMemoryStore,
 } from "./backends/in-memory.ts";
-import { NaiveJsonCodec } from "./naive-json-codec.ts";
+import { DemoJsonCodec, type DemoJsonCodecContext } from "./demo-json-codec.ts";
 import type { Call } from "./call.ts";
 import { NotFoundError, SpawnLimitError } from "./errors.ts";
 import { deepStrictEqual, ok, rejects } from "node:assert/strict";
@@ -30,9 +30,13 @@ import type { Publisher, Subscriber } from "./emitter.ts";
 import { BrrrShutdownSymbol, BrrrTaskDoneEventSymbol } from "./symbol.ts";
 import { parse, stringify } from "superjson";
 import { matrixSuite } from "./fixture.test.ts";
+import type { Codec } from "./codec.ts";
+import { decoder, encoder } from "./internal-codecs.ts";
+
+type TestContext = DemoJsonCodecContext;
 
 await matrixSuite(import.meta.filename, async (_, matrix) => {
-  const codec = new NaiveJsonCodec();
+  const codec = new DemoJsonCodec();
   const topic = matrix.topic;
   const subtopics = {
     t1: "t1",
@@ -46,27 +50,24 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   let server: SubscriberServer;
 
   // Test tasks
-  function bar(a: number) {
+  function bar(_: TestContext, a: number) {
     return 456;
   }
 
-  async function foo(app: ActiveWorker, a: number) {
+  async function foo(app: TestContext, a: number) {
     return (await app.call(bar, topic)(a + 1)) + 1;
   }
 
-  function one(a: number): number {
+  function one(_: TestContext, a: number): number {
     return a + 5;
   }
 
-  async function two(app: ActiveWorker, a: number): Promise<void> {
+  async function two(app: TestContext, a: number): Promise<void> {
     const result = await app.call("one", subtopics.t1)(a + 3);
     strictEqual(result, 15);
   }
 
-  const handlers: Handlers = {
-    bar: taskFn(bar),
-    foo,
-  };
+  const handlers: Handlers<TestContext> = { bar, foo };
 
   function waitFor(call: Call, predicate?: () => Promise<void>): Promise<void> {
     return new Promise((resolve) => {
@@ -108,14 +109,12 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test(AppConsumer.name, async () => {
-    function foo(n: number) {
+    function foo(_: TestContext, n: number) {
       return n * n;
     }
 
     const workerServer = new SubscriberServer(store, cache, emitter);
-    const appWorker = new AppWorker(codec, workerServer, {
-      foo: taskFn(foo),
-    });
+    const appWorker = new AppWorker(codec, workerServer, { foo });
     workerServer.listen(topic, appWorker.handle);
 
     const appConsumer = new AppConsumer(codec, workerServer);
@@ -132,7 +131,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test(LocalBrrr.name, async () => {
-    const brrr = new LocalBrrr(topic, handlers, codec);
+    const brrr = new LocalBrrr(topic, { handlers, codec });
     strictEqual(await brrr.run(foo)(122), 457);
   });
 
@@ -140,25 +139,22 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     async function callNestedGather(useBrrGather = true): Promise<string[]> {
       const calls: string[] = [];
 
-      function foo(a: number): number {
+      function foo(_: TestContext, a: number): number {
         calls.push(`foo(${a})`);
         return a * 2;
       }
 
-      function bar(a: number): number {
+      function bar(_: TestContext, a: number): number {
         calls.push(`bar(${a})`);
         return a - 1;
       }
 
-      async function notBrrrTask(
-        app: ActiveWorker,
-        a: number,
-      ): Promise<number> {
+      async function notBrrrTask(app: TestContext, a: number): Promise<number> {
         const b = await app.call(foo)(a);
         return app.call(bar)(b);
       }
 
-      async function top(app: ActiveWorker, xs: number[]) {
+      async function top(app: TestContext, xs: number[]) {
         calls.push(`top(${xs})`);
         if (useBrrGather) {
           return app.gather(...xs.map((x) => notBrrrTask(app, x)));
@@ -166,15 +162,10 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         return Promise.all(xs.map((x) => notBrrrTask(app, x)));
       }
 
-      const localBrrr = new LocalBrrr(
-        topic,
-        {
-          foo: taskFn(foo),
-          bar: taskFn(bar),
-          top,
-        },
+      const localBrrr = new LocalBrrr(topic, {
         codec,
-      );
+        handlers: { foo, bar, top },
+      });
       await localBrrr.run(top)([3, 4]);
       return calls;
     }
@@ -205,9 +196,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("topics separate app same connection", async () => {
-    const app1 = new AppWorker(codec, server, {
-      one: taskFn(one),
-    });
+    const app1 = new AppWorker(codec, server, { one });
     const app2 = new AppWorker(codec, server, { two });
 
     const call = await codec.encodeCall("two", [7]);
@@ -225,9 +214,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   await test("topics separate app separate connection", async () => {
     const server1 = new SubscriberServer(store, cache, emitter);
     const server2 = new SubscriberServer(store, cache, emitter);
-    const app1 = new AppWorker(codec, server1, {
-      one: taskFn(one),
-    });
+    const app1 = new AppWorker(codec, server1, { one });
     const app2 = new AppWorker(codec, server2, { two });
 
     server1.listen(subtopics.t1, app1.handle);
@@ -242,10 +229,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("topics same app", async () => {
-    const app = new AppWorker(codec, server, {
-      one: taskFn(one),
-      two,
-    });
+    const app = new AppWorker(codec, server, { one, two });
     server.listen(subtopics.t1, app.handle);
     server.listen(subtopics.t2, app.handle);
 
@@ -258,7 +242,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   await test("debounce child", async () => {
     const calls = new Map<number, number>();
 
-    async function foo(app: ActiveWorker, a: number): Promise<number> {
+    async function foo(app: TestContext, a: number): Promise<number> {
       calls.set(a, (calls.get(a) || 0) + 1);
       if (a === 0) {
         return a;
@@ -271,7 +255,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       return results.reduce((sum, val) => sum + val);
     }
 
-    const brrr = new LocalBrrr(topic, { foo }, codec);
+    const brrr = new LocalBrrr(topic, { codec, handlers: { foo } });
     await brrr.run(foo)(3);
 
     deepStrictEqual(Object.fromEntries(calls), { 0: 1, 1: 2, 2: 2, 3: 2 });
@@ -280,12 +264,12 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   await test("no debounce parent", async () => {
     const calls = new Map<string, number>();
 
-    function one(_: number): number {
+    function one(_ctx: TestContext, _a: number): number {
       calls.set("one", (calls.get("one") || 0) + 1);
       return 1;
     }
 
-    async function foo(app: ActiveWorker, a: number): Promise<number> {
+    async function foo(app: TestContext, a: number): Promise<number> {
       calls.set("foo", (calls.get("foo") || 0) + 1);
       const results = await app.gather(
         ...new Array(a).keys().map((i) => app.call(one)(i)),
@@ -293,25 +277,21 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       return results.reduce((sum, val) => sum + val);
     }
 
-    const brrr = new LocalBrrr(
-      topic,
-      {
-        one: taskFn(one),
-        foo,
-      },
+    const brrr = new LocalBrrr(topic, {
       codec,
-    );
+      handlers: { one, foo },
+    });
     await brrr.run(foo)(50);
 
     deepStrictEqual(Object.fromEntries(calls), { one: 50, foo: 51 });
   });
 
   await test("app handler names", async () => {
-    function foo(a: number): number {
+    function foo(_: TestContext, a: number): number {
       return a * a;
     }
 
-    async function bar(app: ActiveWorker, a: number): Promise<number> {
+    async function bar(app: TestContext, a: number): Promise<number> {
       return (
         (await app.call(foo)(a)) *
         (await app.call<[number], number>("quux/zim")(a))
@@ -319,7 +299,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     }
 
     const worker = new AppWorker(codec, server, {
-      "quux/zim": taskFn(foo),
+      "quux/zim": foo,
       "quux/bar": bar,
     });
     const localApp = new LocalApp(topic, server, worker);
@@ -361,7 +341,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     });
 
     await test("basic loop", async () => {
-      async function foo(app: ActiveWorker, a: number) {
+      async function foo(app: TestContext, a: number) {
         return (await app.call(bar, topic)(a + 1)) + 1;
       }
 
@@ -395,7 +375,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       let errors = 5;
 
-      async function foo(a: number): Promise<number> {
+      async function foo(_: TestContext, a: number): Promise<number> {
         if (errors) {
           errors--;
           throw new MyError();
@@ -406,7 +386,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const app = new AppWorker(codec, server, {
         ...handlers,
-        foo: taskFn(foo),
+        foo,
       });
 
       while (true) {
@@ -431,7 +411,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       let errors = 5;
 
-      function bar(a: number): number {
+      function bar(_: TestContext, a: number): number {
         if (errors) {
           errors--;
           throw new MyError();
@@ -439,14 +419,14 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         return a;
       }
 
-      async function foo(app: ActiveWorker, a: number): Promise<number> {
+      async function foo(app: TestContext, a: number): Promise<number> {
         return app.call(bar)(a);
       }
 
       const app = new AppWorker(codec, server, {
         ...handlers,
         foo,
-        bar: taskFn(bar),
+        bar,
       });
 
       while (true) {
@@ -465,7 +445,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     });
 
     await test("stress parallel", async () => {
-      async function fib(app: ActiveWorker, n: bigint): Promise<bigint> {
+      async function fib(app: TestContext, n: bigint): Promise<bigint> {
         if (n < 2) {
           return n;
         }
@@ -476,7 +456,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         return a + b;
       }
 
-      async function top(app: ActiveWorker): Promise<void> {
+      async function top(app: TestContext): Promise<void> {
         const n = await app.call(fib)(1000n);
         deepStrictEqual(
           n,
@@ -484,7 +464,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         );
       }
 
-      const codec = new NaiveJsonCodec({ stringify, parse });
+      const codec = new DemoJsonCodec({ stringify, parse });
       const app = new AppWorker(codec, server, { fib, top });
       await app.schedule(top, topic)();
 
@@ -494,19 +474,19 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     });
 
     await test("app subclass", async () => {
-      function bar(a: number): number {
+      function bar(_: TestContext, a: number): number {
         return a + 1;
       }
 
-      function baz(a: number) {
+      function baz(_: TestContext, a: number) {
         return a + 10;
       }
 
-      async function foo(app: ActiveWorker, a: number): Promise<number> {
+      async function foo(app: TestContext, a: number): Promise<number> {
         return app.call(bar)(a);
       }
 
-      class MyAppWorker extends AppWorker {
+      class MyAppWorker extends AppWorker<TestContext> {
         public readonly myHandle = async (
           request: Request,
           connection: Connection,
@@ -524,11 +504,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         };
       }
 
-      const app = new MyAppWorker(codec, server, {
-        foo,
-        bar: taskFn(bar),
-        baz: taskFn(baz),
-      });
+      const app = new MyAppWorker(codec, server, { foo, bar, baz });
       await app.schedule(foo, topic)(4);
       await server.loop(topic, app.myHandle, flusher);
       strictEqual(await app.read(foo)(4), 14);
@@ -538,7 +514,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       await test("spawn limit depth", async () => {
         let n = 0;
 
-        async function foo(app: ActiveWorker, a: number): Promise<number> {
+        async function foo(app: TestContext, a: number): Promise<number> {
           n++;
           if (a === 0) {
             return 0;
@@ -560,11 +536,11 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       });
 
       await test("spawn limit recoverable", async () => {
-        function one(_: number): number {
+        function one(_ctx: TestContext, _a: number): number {
           return 1;
         }
 
-        async function foo(app: ActiveWorker, a: number): Promise<number> {
+        async function foo(app: TestContext, a: number): Promise<number> {
           const results = await app.gather(
             ...new Array(a).keys().map((i) => app.call(one)(i)),
           );
@@ -578,7 +554,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         });
         const n = server.spawnLimit + 1;
         let spawnLimitEncountered = false;
-        const app = new AppWorker(codec, server, { one: taskFn(one), foo });
+        const app = new AppWorker(codec, server, { one, foo });
         while (true) {
           // reset cache
           Object.defineProperty(cache, "cache", {
@@ -603,12 +579,12 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       await test("spawn limit breadth mapped", async () => {
         const calls = new Map<string, number>();
 
-        function one(_: number): number {
+        function one(_ctx: TestContext, _a: number): number {
           calls.set("one", (calls.get("one") || 0) + 1);
           return 1;
         }
 
-        async function foo(app: ActiveWorker, a: number): Promise<number> {
+        async function foo(app: TestContext, a: number): Promise<number> {
           calls.set("foo", (calls.get("foo") || 0) + 1);
           const results = await app.gather(
             ...new Array(a).keys().map((i) => app.call(one)(i)),
@@ -616,7 +592,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           return results.reduce((sum, val) => sum + val);
         }
 
-        const app = new AppWorker(codec, server, { one: taskFn(one), foo });
+        const app = new AppWorker(codec, server, { one, foo });
         await app.schedule(foo, topic)(server.spawnLimit + 4);
 
         await rejects(server.loop(topic, app.handle, flusher), SpawnLimitError);
@@ -626,12 +602,12 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       await test("spawn limit breadth manual", async () => {
         const calls = new Map<string, number>();
 
-        function one(_: number): number {
+        function one(_ctx: TestContext, _a: number): number {
           calls.set("one", (calls.get("one") || 0) + 1);
           return 1;
         }
 
-        async function foo(app: ActiveWorker, a: number): Promise<number> {
+        async function foo(app: TestContext, a: number): Promise<number> {
           calls.set("foo", (calls.get("foo") || 0) + 1);
           let total = 0;
           for (let i = 0; i < a; i++) {
@@ -646,7 +622,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           value: 100,
         });
 
-        const app = new AppWorker(codec, server, { foo, one: taskFn(one) });
+        const app = new AppWorker(codec, server, { foo, one });
         await app.schedule(foo, topic)(server.spawnLimit + 3);
 
         await rejects(server.loop(topic, app.handle, flusher));
@@ -660,12 +636,12 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         let n = 0;
         let final = undefined;
 
-        function same(a: number): number {
+        function same(_: TestContext, a: number): number {
           n++;
           return a;
         }
 
-        async function foo(app: ActiveWorker, a: number): Promise<number> {
+        async function foo(app: TestContext, a: number): Promise<number> {
           const results = await app.gather(
             ...new Array(a).fill(1).map((i) => app.call(same)(i)),
           );
@@ -679,13 +655,61 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           value: 100,
         });
 
-        const app = new AppWorker(codec, server, { foo, same: taskFn(same) });
+        const app = new AppWorker(codec, server, { foo, same });
         await app.schedule(foo, topic)(server.spawnLimit + 5);
 
         await server.loop(topic, app.handle, flusher);
         strictEqual(n, 1);
         strictEqual(final, server.spawnLimit + 5);
       });
+    });
+
+    await test("custom context", async () => {
+      // Inject task name as a custom context.
+
+      class MyCodec implements Codec<string> {
+        public async decodeReturn(
+          _: string,
+          payload: Uint8Array,
+        ): Promise<unknown> {
+          return decoder.decode(payload);
+        }
+
+        public async encodeCall<A extends unknown[]>(
+          taskName: string,
+          _args: A,
+        ): Promise<Call> {
+          return { taskName, payload: new Uint8Array(), callHash: taskName };
+        }
+
+        public async invokeTask<A extends unknown[], R>(
+          call: Call,
+          handler: Task<string, A, R>,
+          _activeWorker: ActiveWorker<string>,
+        ): Promise<Uint8Array> {
+          // @ts-expect-error type cheat for test.
+          const result: string = await handler(call.taskName);
+          return encoder.encode(result);
+        }
+      }
+
+      function foo(ctx: string) {
+        return ctx;
+      }
+
+      function bar(ctx: string) {
+        return ctx;
+      }
+
+      const codec = new MyCodec();
+      const server = new Server(store, cache, publisher);
+      const app = new AppWorker(codec, server, { foo, bar });
+
+      await app.schedule(foo, topic)();
+      await app.schedule(bar, topic)();
+      await server.loop(topic, app.handle, flusher);
+      strictEqual(await app.read(foo)(), "foo");
+      strictEqual(await app.read(bar)(), "bar");
     });
   });
 });

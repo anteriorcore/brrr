@@ -2,7 +2,8 @@
 import {
   ActiveWorker,
   AppWorker,
-  NaiveJsonCodec,
+  DemoJsonCodec,
+  type DemoJsonCodecContext,
   Server,
 } from "../src/index.ts";
 import { Dynamo, Redis } from "../src/backends/index.ts";
@@ -40,7 +41,10 @@ type Arg = { n: number; salt: string | null };
  * Lucas number: lucas(n) = fib(n - 1) + fib(n + 1)
  * https://en.wikipedia.org/wiki/Lucas_number
  */
-async function lucas(app: ActiveWorker, { n, salt }: Arg): Promise<number> {
+async function lucas(
+  app: DemoJsonCodecContext,
+  { n, salt }: Arg,
+): Promise<number> {
   if (n < 2) {
     return 2 - n;
   }
@@ -51,7 +55,10 @@ async function lucas(app: ActiveWorker, { n, salt }: Arg): Promise<number> {
   return a + b;
 }
 
-async function fib(app: ActiveWorker, { n, salt }: Arg): Promise<number> {
+async function fib(
+  app: DemoJsonCodecContext,
+  { n, salt }: Arg,
+): Promise<number> {
   if (n < 2) {
     return n;
   }
@@ -68,7 +75,7 @@ const server = new Server(dynamo, redis, {
   },
 });
 
-const codec = new NaiveJsonCodec();
+const codec = new DemoJsonCodec();
 
 const app = new AppWorker(codec, server, { fib, lucas });
 

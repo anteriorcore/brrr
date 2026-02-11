@@ -7,89 +7,76 @@ import {
 } from "./connection.ts";
 import type { Codec } from "./codec.ts";
 import { NotFoundError, TaskNotFoundError } from "./errors.ts";
-import { BrrrTaskSymbol } from "./symbol.ts";
 
-export type Task<A extends unknown[] = any[], R = any> = ((
-  ...args: [ActiveWorker, ...A]
-) => R) & {
-  readonly [BrrrTaskSymbol]?: (...args: A) => R;
+export type Task<C, A extends unknown[] = any[], R = any> = NoContextTask<
+  [C, ...A],
+  R
+>;
+
+export type NoContextTask<A extends unknown[] = any[], R = any> = (
+  ...args: A
+) => R | Promise<R>;
+
+export type Handlers<C> = Readonly<Record<string, Task<C, any[], any>>>;
+
+export type Registry<C> = {
+  codec: Codec<C>;
+  handlers: Handlers<C>;
 };
 
-export type StripLeadingActiveWorker<A extends unknown[]> = A extends [
-  ActiveWorker,
-  ...infer Rest,
-]
-  ? Rest
-  : A;
-
-export type NoAppTask<A extends unknown[], R> = (
-  ...args: StripLeadingActiveWorker<A>
-) => Promise<R>;
-
-export type Handlers = Readonly<Record<string, Task>>;
-
-export type TaskIdentifier<A extends unknown[], R> =
-  | ((...args: A) => R | Promise<R>)
-  | string;
+export type TaskIdentifier<C, A extends unknown[], R> = Task<C, A, R> | string;
 
 export function taskIdentifierToName(
-  identifier: TaskIdentifier<any[], any>,
-  handlers: Handlers,
+  identifier: TaskIdentifier<any, any[], any>,
+  handlers: Handlers<any>,
 ): string {
   if (typeof identifier === "string") {
     return identifier;
   }
   for (const [name, handler] of Object.entries(handlers)) {
-    if (handler[BrrrTaskSymbol] === identifier || handler === identifier) {
+    if (handler === identifier) {
       return name;
     }
   }
   throw new TaskNotFoundError(identifier.name);
 }
 
-export function taskFn<A extends unknown[], R>(
-  fn: (...args: A) => R,
-): Task<A, R> {
-  const task: Task<A, R> = (_: ActiveWorker, ...args: A): R => fn(...args);
-  return Object.defineProperty(task, BrrrTaskSymbol, {
-    value: fn satisfies Task<A, R>[typeof BrrrTaskSymbol],
-    writable: false,
-    configurable: false,
-  });
-}
-
-export class AppConsumer {
-  public readonly codec: Codec;
+export class AppConsumer<C> {
   public readonly connection: Connection;
-  public readonly handlers: Handlers;
+  public readonly registry: Registry<C>;
 
   public constructor(
-    codec: Codec,
+    codec: Codec<C>,
     connection: Connection,
-    handlers: Handlers = {},
+    handlers: Handlers<C> = {},
   ) {
-    this.codec = codec;
     this.connection = connection;
-    this.handlers = handlers;
+    this.registry = { codec, handlers };
   }
 
   public schedule<A extends unknown[], R>(
-    taskIdentifier: TaskIdentifier<A, R>,
+    taskIdentifier: TaskIdentifier<C, A, R>,
     topic: string,
-  ): NoAppTask<A, void> {
-    const taskName = taskIdentifierToName(taskIdentifier, this.handlers);
-    return async (...args: StripLeadingActiveWorker<A>) => {
-      const call = await this.codec.encodeCall(taskName, args);
+  ): (...args: A) => Promise<void> {
+    const taskName = taskIdentifierToName(
+      taskIdentifier,
+      this.registry.handlers,
+    );
+    return async (...args: A) => {
+      const call = await this.registry.codec.encodeCall(taskName, args);
       await this.connection.scheduleRaw(topic, call);
     };
   }
 
   public read<A extends unknown[], R>(
-    taskIdentifier: TaskIdentifier<A, R>,
-  ): NoAppTask<A, R> {
-    return async (...args: StripLeadingActiveWorker<A>) => {
-      const taskName = taskIdentifierToName(taskIdentifier, this.handlers);
-      const call = await this.codec.encodeCall(taskName, args);
+    taskIdentifier: TaskIdentifier<C, A, R>,
+  ): (...args: A) => Promise<R> {
+    return async (...args: A) => {
+      const taskName = taskIdentifierToName(
+        taskIdentifier,
+        this.registry.handlers,
+      );
+      const call = await this.registry.codec.encodeCall(taskName, args);
       const payload = await this.connection.memory.getValue(call.callHash);
       if (!payload) {
         throw new NotFoundError({
@@ -97,29 +84,26 @@ export class AppConsumer {
           callHash: call.callHash,
         });
       }
-      return this.codec.decodeReturn(taskName, payload) as R;
+      return this.registry.codec.decodeReturn(taskName, payload) as R;
     };
   }
 }
 
-export class AppWorker extends AppConsumer {
+export class AppWorker<C> extends AppConsumer<C> {
   public readonly handle = async (
     request: Request,
     connection: Connection,
   ): Promise<Response | Defer> => {
-    const handler = this.handlers[request.call.taskName];
+    const handler = this.registry.handlers[request.call.taskName];
     if (!handler) {
       throw new TaskNotFoundError(request.call.taskName);
     }
     try {
-      const activeWorker = new ActiveWorker(
-        connection,
-        this.codec,
-        this.handlers,
+      const payload = await this.registry.codec.invokeTask(
+        request.call,
+        handler,
+        new ActiveWorker(connection, this.registry),
       );
-      const payload = await this.codec.invokeTask(request.call, (...args) => {
-        return handler(activeWorker, ...args);
-      });
       return { payload };
     } catch (err) {
       if (err instanceof Defer) {
@@ -130,29 +114,30 @@ export class AppWorker extends AppConsumer {
   };
 }
 
-export class ActiveWorker {
+export class ActiveWorker<C> {
   private readonly connection: Connection;
-  private readonly codec: Codec;
-  private readonly handlers: Handlers;
+  private readonly registry: Registry<C>;
 
-  public constructor(connection: Connection, codec: Codec, handlers: Handlers) {
+  public constructor(connection: Connection, registry: Registry<C>) {
     this.connection = connection;
-    this.codec = codec;
-    this.handlers = handlers;
+    this.registry = registry;
   }
 
   public call<A extends unknown[], R>(
-    taskIdentifier: TaskIdentifier<A, R>,
+    taskIdentifier: TaskIdentifier<C, A, R>,
     topic?: string | undefined,
-  ): NoAppTask<A, R> {
-    const taskName = taskIdentifierToName(taskIdentifier, this.handlers);
-    return async (...args: StripLeadingActiveWorker<A>): Promise<R> => {
-      const call = await this.codec.encodeCall(taskName, args);
+  ): (...args: A) => Promise<R> {
+    const taskName = taskIdentifierToName(
+      taskIdentifier,
+      this.registry.handlers,
+    );
+    return async (...args: A): Promise<R> => {
+      const call = await this.registry.codec.encodeCall(taskName, args);
       const payload = await this.connection.memory.getValue(call.callHash);
       if (!payload) {
         throw new Defer({ topic, call });
       }
-      return this.codec.decodeReturn(taskName, payload) as R;
+      return this.registry.codec.decodeReturn(taskName, payload) as R;
     };
   }
 
