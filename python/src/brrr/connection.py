@@ -129,7 +129,7 @@ class Connection:
         # It’s not intended for example to give paying customers a higher spawn
         # limit than free ones.  It’s intended to catch infinite recursion and
         # non-idempotent call graphs.
-        if (await self._cache.incr(f"brrr_count/{job.root_id}")) > self._spawn_limit:
+        if (await self._cache.incr(f"brrr/count/{job.root_id}")) > self._spawn_limit:
             msg = f"Spawn limit {self._spawn_limit} reached for {job.root_id} at job {job.call_hash}"
             logger.error(msg)
             # Throw here because it allows the user of brrrlib to decide how to

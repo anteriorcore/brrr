@@ -23,14 +23,17 @@ export class Redis implements Cache {
   }
 
   public async push(topic: string, content: string): Promise<void> {
-    await this.client.rPush(topic, content);
+    await this.client.rPush(`brrr/messages/${topic}`, content);
   }
 
   public async pop(
     topic: string,
     timeoutMs: number = 20_000,
   ): Promise<string | undefined> {
-    const response = await this.client.blPop(topic, timeoutMs / 1000);
+    const response = await this.client.blPop(
+      `brrr/messages/${topic}`,
+      timeoutMs / 1000,
+    );
     return response?.element;
   }
 
