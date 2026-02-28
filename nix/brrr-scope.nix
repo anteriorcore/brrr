@@ -8,6 +8,15 @@ lib.makeScope pkgs.newScope (
   scopeSelf:
   let
     inherit (scopeSelf) callPackage;
+
+    buildImageForPackage = (
+      name:
+      pkgs.dockerTools.buildLayeredImage {
+        inherit name;
+        tag = "latest";
+        config.Entrypoint = [ (lib.getExe scopeSelf.${name}) ];
+      }
+    );
   in
   rec {
     inherit (pkgs) process-compose redis uv;
@@ -43,5 +52,9 @@ lib.makeScope pkgs.newScope (
     };
 
     brrr-demo-ts = brrrts.overrideAttrs { meta.mainProgram = "brrr-demo"; };
+
+    # NOMERGE only build in linux?
+    docker-py = buildImageForPackage "brrr-demo-py";
+    docker-ts = buildImageForPackage "brrr-demo-ts";
   }
 )

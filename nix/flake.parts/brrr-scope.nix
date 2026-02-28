@@ -18,7 +18,6 @@
 
           packages = rec {
             inherit (brrrScope)
-              brrrts
               brrr-venv
               docsync
               brrr-demo-py
@@ -30,9 +29,8 @@
             default = brrr-venv;
           };
 
-          checks =
-            # TODO: make these into indivisual flake modules
-            brrrScope.docsync.tests // import ../brrr-demo.test.nix { inherit self pkgs; };
+          # TODO: make this into standalone flakemodule
+          checks = brrrScope.docsync.tests;
         };
     }
   );

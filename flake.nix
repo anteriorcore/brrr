@@ -57,17 +57,19 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
       imports = [
-        inputs.process-compose-flake.flakeModule
-        inputs.devshell.flakeModule
-        inputs.treefmt-nix.flakeModule
-        inputs.anterior-tools.flakeModules.checkBuildAll
-        ./nix/flake.parts/misc.nix
-        ./nix/flake.parts/treefmt.nix
+        # keep-sorted start
         ./nix/flake.parts/brrr-scope.nix
+        ./nix/flake.parts/demo-test.nix
         ./nix/flake.parts/devshells.nix
-        ./nix/flake.parts/process-compose.nix
-        ./nix/flake.parts/docker-images.nix
         ./nix/flake.parts/integration-test.nix
+        ./nix/flake.parts/misc.nix
+        ./nix/flake.parts/process-compose.nix
+        ./nix/flake.parts/treefmt.nix
+        inputs.anterior-tools.flakeModules.checkBuildAll
+        inputs.devshell.flakeModule
+        inputs.process-compose-flake.flakeModule
+        inputs.treefmt-nix.flakeModule
+        # keep-sorted end
       ];
     };
 }

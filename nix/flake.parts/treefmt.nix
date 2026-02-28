@@ -15,5 +15,6 @@
       enable = true;
       # TODO enable import sorting
     };
+    programs.keep-sorted.enable = true;
   };
 }
