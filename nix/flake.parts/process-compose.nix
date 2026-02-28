@@ -7,9 +7,16 @@
     processComposeModules = {
       brrr-demo = inputs.services-flake.lib.multiService ../brrr-demo.service.nix;
       default =
-        { pkgs, ... }:
+        { config, ... }:
+        let
+          brrrScope = config.brrr.scope;
+        in
         {
-          imports = [ self.processComposeModules.brrr-demo ];
+          imports = [
+            self.processComposeModules.brrr-demo
+            ../nixos-brrr-scope.nix
+            { _module.args = { inherit inputs; }; }
+          ];
           services =
             let
               demoEnv = {
@@ -19,7 +26,6 @@
                 AWS_ACCESS_KEY_ID = "000000000000";
                 AWS_SECRET_ACCESS_KEY = "fake";
               };
-              inherit (pkgs.stdenv.hostPlatform) system;
             in
             {
               redis.r1.enable = true;
@@ -28,17 +34,17 @@
                 inMemory = true;
               };
               brrr-demo.server = {
-                package = self.packages.${system}.brrr-demo-py;
+                package = brrrScope.brrr-demo-py;
                 args = [ "web_server" ];
                 environment = demoEnv;
               };
               brrr-demo.worker-py = {
-                package = self.packages.${system}.brrr-demo-py;
+                package = brrrScope.brrr-demo-py;
                 args = [ "brrr_worker" ];
                 environment = demoEnv;
               };
               brrr-demo.worker-ts = {
-                package = self.packages.${system}.brrr-demo-ts;
+                package = brrrScope.brrr-demo-ts;
                 environment = demoEnv;
               };
             };

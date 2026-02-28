@@ -8,6 +8,15 @@ lib.makeScope pkgs.newScope (
   scopeSelf:
   let
     inherit (scopeSelf) callPackage;
+
+    buildImageForPackage = (
+      name:
+      pkgs.dockerTools.buildLayeredImage {
+        inherit name;
+        tag = "latest";
+        config.Entrypoint = [ (lib.getExe scopeSelf.${name}) ];
+      }
+    );
   in
   rec {
     inherit (pkgs) process-compose redis uv;
@@ -18,7 +27,6 @@ lib.makeScope pkgs.newScope (
     nodejs = pkgs.nodejs_24;
     python = pkgs.python313;
 
-    # TODO: move all these to ./packages
     brrrts = callPackage ../typescript/package.nix { };
     brrrpy = callPackage ../python/package.nix { };
     docsync = callPackage ../docsync/package.nix { };
@@ -44,4 +52,8 @@ lib.makeScope pkgs.newScope (
 
     brrr-demo-ts = brrrts.overrideAttrs { meta.mainProgram = "brrr-demo"; };
   }
+  // (lib.optionalAttrs pkgs.stdenv.isLinux {
+    docker-py = buildImageForPackage "brrr-demo-py";
+    docker-ts = buildImageForPackage "brrr-demo-ts";
+  })
 )

@@ -96,42 +96,42 @@ let
   };
   module = {
     server =
-      { config, pkgs, ... }:
+      { config, ... }:
       {
         imports = [ self.nixosModules.brrr-demo ];
         networking.firewall.allowedTCPPorts = [ 8080 ];
         services.brrr-demo = {
           enable = true;
-          package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-py;
+          package = config.brrr.scope.brrr-demo-py;
           args = [ "web_server" ];
           environment = demoEnvs;
         };
       };
     pyworker =
-      { config, pkgs, ... }:
+      { config, ... }:
       {
         imports = [ self.nixosModules.brrr-demo ];
         services.brrr-demo = {
           enable = true;
-          package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-py;
+          package = config.brrr.scope.brrr-demo-py;
           args = [ "brrr_worker" ];
           environment = demoEnvs;
         };
       };
     tsworker =
-      { config, pkgs, ... }:
+      { config, ... }:
       {
         imports = [ self.nixosModules.brrr-demo ];
         services.brrr-demo = {
           enable = true;
-          package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-ts;
+          package = config.brrr.scope.brrr-demo-ts;
           environment = demoEnvs;
         };
       };
   };
   docker = {
     server =
-      { config, pkgs, ... }:
+      { config, ... }:
       {
         # Podman (default backend) doesn’t like images built with nix
         # apparently.  Ironic!
@@ -139,32 +139,32 @@ let
         virtualisation.oci-containers.containers.brrr = {
           extraOptions = [ "--network=host" ];
           image = "brrr-demo-py:latest";
-          imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-py;
+          imageFile = config.brrr.scope.docker-py;
           environment = demoEnvs;
           cmd = [ "web_server" ];
         };
         networking.firewall.allowedTCPPorts = [ 8080 ];
       };
     pyworker =
-      { config, pkgs, ... }:
+      { config, ... }:
       {
         virtualisation.oci-containers.backend = "docker";
         virtualisation.oci-containers.containers.brrr = {
           extraOptions = [ "--network=host" ];
           image = "brrr-demo-py:latest";
-          imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-py;
+          imageFile = config.brrr.scope.docker-py;
           cmd = [ "brrr_worker" ];
           environment = demoEnvs;
         };
       };
     tsworker =
-      { config, pkgs, ... }:
+      { config, ... }:
       {
         virtualisation.oci-containers.backend = "docker";
         virtualisation.oci-containers.containers.brrr-ts = {
           extraOptions = [ "--network=host" ];
           image = "brrr-demo-ts:latest";
-          imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-ts;
+          imageFile = config.brrr.scope.docker-ts;
           environment = demoEnvs;
         };
       };
