@@ -67,6 +67,7 @@
         ./nix/flake.parts/devshells.nix
         ./nix/flake.parts/process-compose.nix
         ./nix/flake.parts/docker-images.nix
+        ./nix/flake.parts/integration-test.nix
       ];
     };
 }
