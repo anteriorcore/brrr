@@ -8,6 +8,19 @@ export interface PendingReturnsPayload {
   readonly returns: unknown[][];
 }
 
+/**
+ * Set of parents waiting for a child call to complete.
+ *
+ * When the child call is scheduled, a timestamp is added to this record to
+ * indicate it doesn't need to be rescheduled.  If the record exists but with a
+ * null scheduled timestamp, you cannot be sure this child has ever actually
+ * been scheduled, so it should be rescheduled.
+ *
+ * This record is used in highly race sensitive context and is the point of a
+ * lot of CASing.
+ *
+ * <docsync>PendingReturns</docsync>
+ */
 export class PendingReturns {
   public readonly scheduledAt: number | undefined;
   public readonly encodedReturns: ReadonlySet<string>;

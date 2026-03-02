@@ -44,6 +44,8 @@ class PendingReturns:
     This record is used in highly race sensitive context and is the point of a
     lot of CASing.
 
+    <docsync>PendingReturns</docsync>
+
     """
 
     # Unix time, in seconds.  Purposefully coarse to drive home that this value
