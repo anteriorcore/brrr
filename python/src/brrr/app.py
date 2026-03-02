@@ -8,7 +8,7 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass
-from typing import Any, Concatenate, overload
+from typing import Any, Concatenate, Final, overload
 
 from brrr.store import NotFoundError
 
@@ -105,7 +105,7 @@ class AppWorker[C](AppConsumer[C]):
             resp = await self._registry.codec.invoke_task(
                 request.call,
                 handler,
-                ActiveWorker(conn, self._registry),
+                ActiveWorker(conn, self._registry, request.root_id),
             )
         except Defer as e:
             return e
@@ -115,10 +115,15 @@ class AppWorker[C](AppConsumer[C]):
 class ActiveWorker[C]:
     _connection: Connection
     _registry: Registry[C]
+    # Exposed only for reference sake of the handler of a call; changing this
+    # value has no effect on how this class behaves.  This class’ implementation
+    # does not read nor care about this value.
+    root_id: Final[str]
 
-    def __init__(self, conn: Connection, registry: Registry[C]):
+    def __init__(self, conn: Connection, registry: Registry[C], root_id: str):
         self._connection = conn
         self._registry = registry
+        self.root_id = root_id
 
     @overload
     def call[**P, R](

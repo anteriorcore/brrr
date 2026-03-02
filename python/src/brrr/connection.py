@@ -52,6 +52,10 @@ class Defer(Exception):
 class Request:
     # The actual semantically meaningful part of the call
     call: Call
+    # An opaque string which uniquely identifies this particular top-level brrr
+    # schedule operation.  Every “schedule” gets a new root id, regardless of
+    # the call parameters, regardless of cache availability.
+    root_id: str
     # Probably some extra useful out-of-band metadata at some point?  Something
     # like "headers"?  Metadata?  For now we only have calls in a request, but
     # it’s very likely we’ll want to add things here very soon and this is part
@@ -251,7 +255,7 @@ class Server(Connection):
         logger.debug(
             f"Calling {my_topic} -> {msg.root_id}/{msg.call_hash} -> {call.task_name}"
         )
-        req = Request(call=call)
+        req = Request(call=call, root_id=msg.root_id)
         ret = await handler(req, self)
         if isinstance(ret, Defer):
             logger.debug(f"Deferring {msg.root_id}/{msg.call_hash}: {call.task_name}")
