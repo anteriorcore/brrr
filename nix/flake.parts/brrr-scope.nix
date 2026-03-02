@@ -18,19 +18,25 @@
 
           packages = rec {
             inherit (brrrScope)
-              brrr-venv
-              docsync
+              # keep-sorted start
+              brrr
               brrr-demo-py
               brrr-demo-ts
+              brrr-venv
               brrr-venv-test
+              brrrts
+              docsync
               npm-version-to-git
+              uv
+              # keep-sorted end
               ;
 
             default = brrr-venv;
           };
 
-          # TODO: make this into standalone flakemodule
-          checks = brrrScope.docsync.tests;
+          checks =
+            # TODO: make docsync standalone flakemodule
+            brrrScope.docsync.tests;
         };
     }
   );

@@ -33,7 +33,7 @@ lib.makeScope pkgs.newScope (
 
     package-lock2nix = callPackage inputs.package-lock2nix.lib.package-lock2nix {
       inherit nodejs;
-      # NOMERGE infinite recursion
+      # NOMERGE infinite recursion without an empty overlay
       overrideScope = prev: final: { };
     };
 
