@@ -45,7 +45,7 @@ export class Connection {
   }
 
   public async putJob(topic: string, job: ScheduleMessage): Promise<void> {
-    if ((await this.cache.incr(`brrr_count/${job.rootId}`)) > this.spawnLimit) {
+    if ((await this.cache.incr(`brrr/count/${job.rootId}`)) > this.spawnLimit) {
       throw new SpawnLimitError(this.spawnLimit, job.rootId, job.callHash);
     }
     await this.emitter.emit(topic, TaggedTuple.encodeToString(job));
