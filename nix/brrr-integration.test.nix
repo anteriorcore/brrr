@@ -57,6 +57,9 @@ let
       };
       testScript = ''
         datastores.wait_for_unit("default.target")
+        datastores.wait_for_open_port(6379)
+        datastores.wait_for_open_port(8000)
+
         tester.wait_for_unit("default.target")
         tester.systemctl("start --no-block ${name}.service")
         tester.wait_for_unit("${name}.service")
