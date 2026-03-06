@@ -73,6 +73,9 @@ let
       testScript = ''
         # Start first because it's a dependency
         datastores.wait_for_unit("default.target")
+        datastores.wait_for_open_port(6379)
+        datastores.wait_for_open_port(8000)
+
         # Server initializes the stores
         server.wait_for_unit("default.target")
         pyworker.wait_for_unit("default.target")
