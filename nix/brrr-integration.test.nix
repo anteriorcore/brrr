@@ -28,7 +28,7 @@ let
           { ... }:
           {
             imports = [
-              self.nixosModules.dynamodb
+              self.inputs.anterior-tools.nixosModules.dynamodb
               ./datastores.nix
             ];
           };
