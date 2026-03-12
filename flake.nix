@@ -129,7 +129,6 @@
           # WIP, exporting is best effort.
           nixosModules = {
             brrr-demo = import ./nix/brrr-demo.module.nix;
-            dynamodb = import ./nix/dynamodb.module.nix;
           };
         };
         perSystem =
