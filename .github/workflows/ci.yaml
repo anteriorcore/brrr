@@ -21,7 +21,7 @@ jobs:
           enable_kvm: true
           extra_nix_config: "system-features = nixos-test benchmark big-parallel kvm"
       # Our private cache, feel free to substitute in a fork
-      - uses: cachix/cachix-action@3ba601ff5bbb07c7220846facfa2cd81eeee15a1
+      - uses: cachix/cachix-action@1eb2ef646ac0255473d23a5907ad7b04ce94065c
         if: |
           ! (github.triggering_actor == 'dependabot[bot]' && github.repository_owner == 'anteriorcore')
         with:
