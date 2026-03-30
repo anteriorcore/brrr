@@ -1,4 +1,4 @@
-# Copyright © 2024, 2025  Brrr Authors
+# Copyright © 2024, 2025, 2026  Brrr Authors
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published
@@ -14,42 +14,44 @@
 
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
-    systems.url = "systems";
-    flake-parts.url = "github:hercules-ci/flake-parts";
-    devshell.url = "github:numtide/devshell";
-    services-flake.url = "github:juspay/services-flake";
-    process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
-    # Heavily inspired by
-    # https://pyproject-nix.github.io/uv2nix/usage/hello-world.html
-    pyproject-nix = {
-      url = "github:pyproject-nix/pyproject.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    uv2nix = {
-      url = "github:pyproject-nix/uv2nix";
-      inputs.pyproject-nix.follows = "pyproject-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    pyproject-build-systems = {
-      url = "github:pyproject-nix/build-system-pkgs";
-      inputs.pyproject-nix.follows = "pyproject-nix";
-      inputs.uv2nix.follows = "uv2nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    package-lock2nix = {
-      url = "github:anteriorai/package-lock2nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-parts.follows = "flake-parts";
-      inputs.treefmt-nix.follows = "treefmt-nix";
-    };
-    treefmt-nix.url = "github:numtide/treefmt-nix";
+    # keep-sorted start block=true
     anterior-tools = {
       url = "github:anteriorcore/tools";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.treefmt-nix.follows = "treefmt-nix";
       inputs.flake-parts.follows = "flake-parts";
     };
+    devshell.url = "github:numtide/devshell";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
+    package-lock2nix = {
+      url = "github:anteriorai/package-lock2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-parts.follows = "flake-parts";
+      inputs.treefmt-nix.follows = "treefmt-nix";
+    };
+    process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # Heavily inspired by
+    # https://pyproject-nix.github.io/uv2nix/usage/hello-world.html
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    services-flake.url = "github:juspay/services-flake";
+    systems.url = "systems";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # keep-sorted end
   };
 
   outputs =
@@ -171,6 +173,11 @@
                 inherit system;
                 # dynamodb
                 config.allowUnfree = true;
+                overlays = [
+                  (final: prev: {
+                    inherit (inputs.anterior-tools.packages.${final.stdenv.hostPlatform.system}) wait-for-port;
+                  })
+                ];
               };
               process-compose.demo = {
                 imports = [
