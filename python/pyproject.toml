@@ -7,7 +7,7 @@ authors = [
     { name = "Jesse Zwaan", email = "j.k.zwaan@gmail.com" },
     { name = "Anterior", email = "tech@anterior.com" },
 ]
-requires-python = "<4,>=3.12"
+requires-python = "<4,>=3.13"
 dependencies = [
     "bencode-py>=4.0.0",
 ]
