@@ -25,8 +25,7 @@ jobs:
       # Our private cache, feel free to substitute in a fork
       - uses: cachix/cachix-action@1eb2ef646ac0255473d23a5907ad7b04ce94065c
         with:
-          name: anterior-private
-          signingKey: "${{ secrets.CACHIX_SIGNING_KEY }}"
+          name: anterior-public
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
       - uses: nicknovitski/nix-develop@5da6ac475f1ffbcf54ee562fa3056646e146be95
       - run: |
