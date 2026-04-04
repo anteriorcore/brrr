@@ -1,18 +1,28 @@
-from collections.abc import Sequence
-from contextlib import asynccontextmanager
-from typing import AsyncIterator
+import asyncio
+import time
 
-from brrr.backends.in_memory import InMemoryQueue
-from brrr.queue import Queue
-
-from tests.contract_queue import QueueContract
+import pytest
+from brrr.backends.in_memory import CloseOnSilenceQueue
+from brrr.queue import QueueIsClosed
 
 
-class TestInMemoryQueue(QueueContract):
-    has_accurate_info = True
-
-    @asynccontextmanager
-    async def with_queue(self, topics: Sequence[str]) -> AsyncIterator[Queue]:
-        queue = InMemoryQueue(topics=topics)
-        queue.recv_block_secs = 1
-        yield queue
+async def test_close_on_silence() -> None:
+    q = CloseOnSilenceQueue(["t1", "t2"])
+    await q.put_message("t1", "foo")
+    await q.put_message("t2", "bar")
+    checkpoint = time.monotonic()
+    assert (await q.get_message("t1")).body == "foo"
+    with pytest.raises(QueueIsClosed):
+        await q.get_message("t1")
+    # This blocked for around a second:
+    assert 0.9 < time.monotonic() - checkpoint < 1.1
+    checkpoint = time.monotonic()
+    with pytest.raises(asyncio.QueueShutDown):
+        await q.put_message("t1", "frob")
+    with pytest.raises(asyncio.QueueShutDown):
+        await q.put_message("t2", "brap")
+    assert (await q.get_message("t2")).body == "bar"
+    with pytest.raises(QueueIsClosed):
+        await q.get_message("t2")
+    # None of that blocked
+    assert time.monotonic() - checkpoint < 0.1

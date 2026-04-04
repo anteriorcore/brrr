@@ -17,7 +17,11 @@ from brrr import (
     Response,
     Task,
 )
-from brrr.backends.in_memory import InMemoryByteStore, InMemoryQueue
+from brrr.backends.in_memory import (
+    CloseOnEmptyQueue,
+    CloseOnSilenceQueue,
+    InMemoryByteStore,
+)
 from brrr.call import Call
 from brrr.codec import Codec
 from brrr.demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
@@ -30,7 +34,7 @@ type TestContext = DemoPickleCodecContext
 
 async def test_app_worker(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
 
     name_foo, name_bar = names(task_name, ("foo", "bar"))
 
@@ -48,7 +52,6 @@ async def test_app_worker(topic: str, task_name: str) -> None:
             connection=conn,
         )
         await app.schedule(foo, topic=topic)(122)
-        queue.flush()
         await conn.loop(topic, app.handle)
         assert await app.read(foo)(122) == 457
         assert await app.read(name_foo)(122) == 457
@@ -58,7 +61,7 @@ async def test_app_worker(topic: str, task_name: str) -> None:
 
 async def test_app_consumer(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
 
     async def foo(app: TestContext, a: int) -> int:
         return a * a
@@ -69,7 +72,6 @@ async def test_app_consumer(topic: str, task_name: str) -> None:
             handlers={task_name: foo}, codec=DemoPickleCodec(), connection=conn
         )
         await appw.schedule(foo, topic=topic)(5)
-        queue.flush()
         await conn.loop(topic, appw.handle)
 
     # Now test that a read-only app can read that
@@ -189,7 +191,7 @@ async def test_asyncio_gather(topic: str, task_name: str) -> None:
 async def test_topics_separate_app_same_conn(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     t1, t2 = names(topic, ("1", "2"))
-    queue = InMemoryQueue([t1, t2])
+    queue = CloseOnSilenceQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
     async def one(app: TestContext, a: int) -> int:
@@ -198,7 +200,6 @@ async def test_topics_separate_app_same_conn(topic: str, task_name: str) -> None
     async def two(app: TestContext, a: int) -> None:
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
-        await queue.close()
 
     async with brrr.serve(queue, store, store) as conn:
         app1 = AppWorker(
@@ -210,13 +211,11 @@ async def test_topics_separate_app_same_conn(topic: str, task_name: str) -> None
         await app2.schedule(name_two, topic=t2)(7)
         await asyncio.gather(conn.loop(t1, app1.handle), conn.loop(t2, app2.handle))
 
-    await queue.join()
-
 
 async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     t1, t2 = names(topic, ("1", "2"))
-    queue = InMemoryQueue([t1, t2])
+    queue = CloseOnSilenceQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
     async def one(app: TestContext, a: int) -> int:
@@ -225,7 +224,6 @@ async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> 
     async def two(app: TestContext, a: int) -> None:
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
-        await queue.close()
 
     async with brrr.serve(queue, store, store) as conn1:
         async with brrr.serve(queue, store, store) as conn2:
@@ -240,13 +238,11 @@ async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> 
                 conn1.loop(t1, app1.handle), conn2.loop(t2, app2.handle)
             )
 
-    await queue.join()
-
 
 async def test_topics_same_app(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     t1, t2 = names(topic, ("1", "2"))
-    queue = InMemoryQueue([t1, t2])
+    queue = CloseOnSilenceQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
     async def one(app: TestContext, a: int) -> int:
@@ -256,7 +252,6 @@ async def test_topics_same_app(topic: str, task_name: str) -> None:
         # N.B.: b2 can use its own brrr instance
         result = await app.call(name_one, topic=t1)(a + 3)
         assert result == 15
-        await queue.close()
 
     async with brrr.serve(queue, store, store) as conn:
         app = AppWorker(
@@ -268,15 +263,12 @@ async def test_topics_same_app(topic: str, task_name: str) -> None:
         # Listen on different topics with the same worker.
         await asyncio.gather(conn.loop(t1, app.handle), conn.loop(t2, app.handle))
 
-    await queue.join()
-
 
 async def test_weird_names(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
 
     async def double(app: TestContext, x: int) -> int:
-        await queue.close()
         return x + x
 
     async with brrr.serve(queue, store, store) as conn:
@@ -284,15 +276,13 @@ async def test_weird_names(topic: str, task_name: str) -> None:
             handlers={task_name: double}, codec=DemoPickleCodec(), connection=conn
         )
         await app.schedule(task_name, topic=topic)(7)
-        queue.flush()
         await conn.loop(topic, app.handle)
         assert await app.read(task_name)(7) == 14
 
 
 async def test_app_nop_closed_queue(topic: str) -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
-    await queue.close()
+    queue = CloseOnEmptyQueue([topic])
     async with brrr.serve(queue, store, store) as conn:
         app = AppWorker(handlers={}, codec=DemoPickleCodec(), connection=conn)
         await conn.loop(topic, app.handle)
@@ -305,7 +295,7 @@ async def test_stop_when_empty(topic: str, task_name: str) -> None:
     calls_pre = Counter[int]()
     calls_post = Counter[int]()
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
 
     async def foo(app: TestContext, a: int) -> int:
         calls_pre[a] += 1
@@ -320,9 +310,7 @@ async def test_stop_when_empty(topic: str, task_name: str) -> None:
             handlers={task_name: foo}, codec=DemoPickleCodec(), connection=conn
         )
         await app.schedule(foo, topic=topic)(3)
-        queue.flush()
         await conn.loop(topic, app.handle)
-        await queue.join()
 
     assert calls_pre == Counter({0: 1, 1: 2, 2: 2, 3: 2})
     assert calls_post == Counter({1: 1, 2: 1, 3: 1})
@@ -331,13 +319,11 @@ async def test_stop_when_empty(topic: str, task_name: str) -> None:
 @pytest.mark.parametrize("use_gather", [(False,), (True,)])
 async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnSilenceQueue([topic])
     name_top, name_block = names(task_name, ("top", "block"))
 
     parallel = 5
     barrier: asyncio.Barrier | None = asyncio.Barrier(parallel)
-
-    top_calls = 0
 
     async def block(app: TestContext, a: int) -> int:
         nonlocal barrier
@@ -357,32 +343,19 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
         gather = app.gather if use_gather else asyncio.gather
         await gather(*(app.call(block)(x) for x in range(parallel)))
 
-        # Mega hack workaround for our lack of parent debouncing, which causes
-        # this to be called multiple times, all of which goes through the queue
-        # we’re trying to close.  This if guard guarantees that the queue is
-        # only closed on the _last_ call to ‘top’, and we know no other message
-        # are put on the queue after this.  Of course the real solution is to
-        # debounce calls to the parent!
-        nonlocal top_calls
-        top_calls += 1
-        if top_calls == parallel:
-            await queue.close()
-
     async with brrr.serve(queue, store, store) as conn:
         app = AppWorker(
             handlers={name_top: top, name_block: block},
             codec=DemoPickleCodec(),
             connection=conn,
         )
-        # Don’t use queue.flush() because this test uses parallel workers
         await app.schedule(top, topic=topic)()
         await asyncio.gather(*(conn.loop(topic, app.handle) for _ in range(parallel)))
-        await queue.join()
 
 
 async def test_stress_parallel(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnSilenceQueue([topic])
 
     name_top, name_fib = names(task_name, ("top", "fib"))
 
@@ -411,16 +384,7 @@ async def test_stress_parallel(topic: str, task_name: str) -> None:
         )
         await app.schedule(top, topic=topic)()
 
-        # Terrible hack: because we don’t do proper parent debouncing, this stress
-        # test ends up with a metric ton of duplicate calls.
-        async def wait_and_close() -> None:
-            await asyncio.sleep(1)
-            await queue.close()
-
-        await asyncio.gather(
-            *([conn.loop(topic, app.handle) for _ in range(10)] + [wait_and_close()])
-        )
-        await queue.join()
+        await asyncio.gather(*(conn.loop(topic, app.handle) for _ in range(10)))
 
 
 async def test_debounce_child(topic: str, task_name: str) -> None:
@@ -462,7 +426,7 @@ async def test_no_debounce_parent(topic: str) -> None:
 
 async def test_app_loop_resumable(topic: str) -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
 
     errors = 5
 
@@ -474,7 +438,6 @@ async def test_app_loop_resumable(topic: str) -> None:
         if errors:
             errors -= 1
             raise MyError("retry")
-        await queue.close()
         return a
 
     async with brrr.serve(queue, store, store) as conn:
@@ -489,14 +452,12 @@ async def test_app_loop_resumable(topic: str) -> None:
             except MyError:
                 continue
 
-    await queue.join()
     assert errors == 0
 
 
 async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
-    queue.flush()
+    queue = CloseOnEmptyQueue([topic])
 
     name_foo, name_bar = names(task_name, ("foo", "bar"))
 
@@ -529,7 +490,6 @@ async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
             except MyError:
                 continue
 
-    await queue.join()
     assert errors == 0
 
 
@@ -558,7 +518,7 @@ async def test_app_handler_names(topic: str, task_name: str) -> None:
 
 async def test_app_subclass(topic: str) -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
 
     async def bar(app: TestContext, a: int) -> int:
         return a + 1
@@ -590,7 +550,6 @@ async def test_app_subclass(topic: str) -> None:
     async with brrr.serve(queue, store, store) as conn:
         app = MyAppWorker(handlers=handlers, codec=DemoPickleCodec(), connection=conn)
         await app.schedule(foo, topic=topic)(4)
-        queue.flush()
         await conn.loop(topic, app.handle)
         assert await app.read(foo)(4) == 14
 
@@ -600,7 +559,7 @@ async def test_custom_context(topic: str) -> None:
     Inject task name as a custom context.
     """
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
 
     class MyCodec(Codec[str]):
         def encode_call(
@@ -631,7 +590,6 @@ async def test_custom_context(topic: str) -> None:
         )
         await app.schedule(foo, topic=topic)()
         await app.schedule(bar, topic=topic)()
-        queue.flush()
         await conn.loop(topic, app.handle)
         assert await app.read(foo)() == "foo"
         assert await app.read(bar)() == "bar"

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Awaitable, Callable
 
 from .app import AppWorker, Task
-from .backends.in_memory import InMemoryByteStore, InMemoryQueue
+from .backends.in_memory import CloseOnEmptyQueue, InMemoryByteStore
 from .codec import Codec
 from .connection import Server, serve
 
@@ -15,7 +15,7 @@ class LocalApp[C]:
     """
 
     def __init__(
-        self, *, topic: str, conn: Server, queue: InMemoryQueue, app: AppWorker[C]
+        self, *, topic: str, conn: Server, queue: CloseOnEmptyQueue, app: AppWorker[C]
     ) -> None:
         self._conn = conn
         self._app = app
@@ -29,7 +29,6 @@ class LocalApp[C]:
         if self._has_run:
             raise ValueError("LocalApp has already run")
         self._has_run = True
-        self._queue.flush()
         await self._conn.loop(self._topic, self._app.handle)
 
 
@@ -41,7 +40,7 @@ async def local_app[C](
     Helper function for unit tests which use brrr
     """
     store = InMemoryByteStore()
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
 
     async with serve(queue, store, store) as conn:
         app = AppWorker(handlers=handlers, codec=codec, connection=conn)

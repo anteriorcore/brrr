@@ -3,7 +3,7 @@ from collections import Counter
 import brrr
 import pytest
 from brrr import AppWorker, SpawnLimitError
-from brrr.backends.in_memory import InMemoryByteStore, InMemoryQueue
+from brrr.backends.in_memory import CloseOnEmptyQueue, InMemoryByteStore
 from brrr.demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
 
 from .parametrize import names
@@ -12,7 +12,7 @@ type TestContext = DemoPickleCodecContext
 
 
 async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
     store = InMemoryByteStore()
     n = 0
 
@@ -30,7 +30,6 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
             handlers={task_name: foo}, codec=DemoPickleCodec(), connection=conn
         )
         await app.schedule(task_name, topic=topic)(conn._spawn_limit + 3)
-        queue.flush()
 
         with pytest.raises(SpawnLimitError):
             await conn.loop(topic, app.handle)
@@ -39,7 +38,7 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
 
 
 async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
     store = InMemoryByteStore()
     calls = Counter[str]()
     name_one, name_foo = names(task_name, ("one", "foo"))
@@ -61,7 +60,6 @@ async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
             connection=conn,
         )
         await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 4)
-        queue.flush()
 
         with pytest.raises(SpawnLimitError):
             await conn.loop(topic, app.handle)
@@ -70,7 +68,7 @@ async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
 
 
 async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
     store = InMemoryByteStore()
     cache = InMemoryByteStore()
     name_one, name_foo = names(task_name, ("one", "foo"))
@@ -97,7 +95,6 @@ async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
             cache.inner = {}
             try:
                 await app.schedule(name_foo, topic=topic)(n)
-                queue.flush()
                 await conn.loop(topic, app.handle)
                 break
             except SpawnLimitError:
@@ -109,7 +106,7 @@ async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
 
 
 async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
     store = InMemoryByteStore()
     calls = Counter[str]()
     name_one, name_foo = names(task_name, ("one", "foo"))
@@ -135,7 +132,6 @@ async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
             connection=conn,
         )
         await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 3)
-        queue.flush()
         with pytest.raises(SpawnLimitError):
             await conn.loop(topic, app.handle)
 
@@ -145,7 +141,7 @@ async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
 
 
 async def test_spawn_limit_cached(topic: str, task_name: str) -> None:
-    queue = InMemoryQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
     store = InMemoryByteStore()
     name_foo, name_same = names(task_name, ("foo", "same"))
     n = 0
@@ -170,7 +166,6 @@ async def test_spawn_limit_cached(topic: str, task_name: str) -> None:
             connection=conn,
         )
         await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 5)
-        queue.flush()
         await conn.loop(topic, app.handle)
 
         assert n == 1
