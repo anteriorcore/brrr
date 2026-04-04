@@ -643,3 +643,22 @@ async def test_custom_context(topic: str) -> None:
         await conn.loop(topic, app.handle)
         assert await app.read(foo)() == "foo"
         assert await app.read(bar)() == "bar"
+
+
+async def test_app_root_id(topic: str) -> None:
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue([topic])
+
+    async def foo(app: TestContext) -> str:
+        return app.root_id
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker[TestContext](
+            handlers=dict(foo=foo),
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(foo, topic=topic)()
+        await conn.loop(topic, app.handle)
+        # Ensure that it exists at all
+        assert await app.read(foo)()

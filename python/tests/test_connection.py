@@ -73,6 +73,20 @@ async def test_conn_exception() -> None:
         assert count == 2
 
 
+async def test_conn_root_id() -> None:
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue([TOPIC])
+
+    async def handler(request: Request, conn: Connection) -> Defer | Response:
+        return Response(payload=request.root_id.encode("utf-8"))
+
+    async with brrr.serve(queue, store, store) as conn:
+        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
+        await conn.loop(TOPIC, handler)
+        # Just ensure that it exists at all
+        assert await conn.read_raw("hash1")
+
+
 async def test_conn_nop_closed_queue() -> None:
     store = InMemoryByteStore()
     queue = CloseOnEmptyQueue([TOPIC])
