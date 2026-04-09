@@ -51,10 +51,13 @@ async def local_app[C](
 class LocalBrrr[C]:
     """Helper class for your unit tests to use an ephemeral in-memory brrr.
 
-    >>> async def plus(app: brrr.ActiveWorker, x: int, y: int) -> int: return x + y
+    >>> import asyncio
+    >>> from .demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
+    >>>
+    >>> async def plus(app: AppWorker, x: int, y: int) -> int: return x + y
     ...
-    >>> b = LocalBrrr(topic="test", handlers=dict(plus=plus), codec=PickleCodec())
-    >>> await b.run(plus)(x=1, y=2)
+    >>> b = LocalBrrr(topic="test", handlers=dict(plus=plus), codec=DemoPickleCodec())
+    >>> asyncio.run(b.run(plus)(x=1, y=2))
     3
 
     The full state is cleared between each .call.  There is no brrr caching
