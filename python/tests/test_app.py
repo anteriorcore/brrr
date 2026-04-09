@@ -3,6 +3,7 @@ import dataclasses
 import typing
 from collections import Counter
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import brrr
 import pytest
@@ -186,6 +187,55 @@ async def test_asyncio_gather(topic: str, task_name: str) -> None:
     assert len([c for c in asyncio_calls if c.startswith("top")]) == 5
     assert asyncio_calls.index("foo(3)") < asyncio_calls.index("bar(6)")
     assert asyncio_calls.index("foo(4)") < asyncio_calls.index("bar(8)")
+
+
+async def test_exc_gather(topic: str, task_name: str) -> None:
+    """asyncio.gather leaves no coroutines dangling, even in the face of
+    exceptions.
+
+    ActiveWorker.gather must behave the same because it can be called with
+    functions which only call brrr tasks lower in their stack, but could still
+    genuinely raise a non-brrr exception.  The point of brrr gather is to be
+    semantically equivalent to asyncio.gather, but brrr aware.
+
+    """
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue([topic])
+
+    class MyError(Exception):
+        pass
+
+    def mktest(should_raise: bool) -> Any:
+        coro = AsyncMock()
+
+        async def inner() -> None:
+            await coro()
+            if should_raise:
+                raise MyError()
+
+        return coro, inner
+
+    coros, funcs = zip(*(mktest(i == 3) for i in range(10)))
+
+    async def foo(app: TestContext) -> int:
+        try:
+            await app.gather(*(f() for f in funcs))
+        except MyError:
+            pass
+        return 1234
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker[TestContext](
+            handlers={task_name: foo},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(foo, topic=topic)()
+        await conn.loop(topic, app.handle)
+        assert await app.read(foo)() == 1234
+
+    for coro in coros:
+        coro.assert_awaited_once()
 
 
 async def test_topics_separate_app_same_conn(topic: str, task_name: str) -> None:
