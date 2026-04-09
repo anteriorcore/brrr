@@ -309,6 +309,10 @@
                         name = "UV_NO_SYNC";
                         value = "1";
                       }
+                      {
+                        name = "UV_PYTHON";
+                        value = lib.getExe python;
+                      }
                     ];
                     packages = devPackagesNoPy ++ [ brrrpy.brrr-venv-editable ];
                     commands = [
