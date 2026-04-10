@@ -1,7 +1,7 @@
 import brrr
 import pytest
 from brrr import Connection, Defer, DeferredCall, Request, Response
-from brrr.backends.in_memory import InMemoryByteStore, InMemoryQueue
+from brrr.backends.in_memory import CloseOnEmptyQueue, InMemoryByteStore
 from brrr.call import Call
 
 TOPIC = "brrr-test"
@@ -9,7 +9,7 @@ TOPIC = "brrr-test"
 
 async def test_conn_raw() -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([TOPIC])
+    queue = CloseOnEmptyQueue([TOPIC])
 
     async def handler(request: Request, conn: Connection) -> Defer | Response:
         call = request.call
@@ -39,7 +39,6 @@ async def test_conn_raw() -> None:
 
     async with brrr.serve(queue, store, store) as conn:
         await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
-        queue.flush()
         await conn.loop(TOPIC, handler)
         assert await conn.read_raw("hash1") == b"zim"
         assert await conn.read_raw("hash2") == b"inner return value"
@@ -48,7 +47,7 @@ async def test_conn_raw() -> None:
 
 async def test_conn_exception() -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([TOPIC])
+    queue = CloseOnEmptyQueue([TOPIC])
 
     count = 0
 
@@ -66,7 +65,6 @@ async def test_conn_exception() -> None:
     async with brrr.serve(queue, store, store) as conn:
         await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
         await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
-        queue.flush()
         with pytest.raises(MyError):
             await conn.loop(TOPIC, handler)
         assert await conn.read_raw("hash1") is None
@@ -77,8 +75,7 @@ async def test_conn_exception() -> None:
 
 async def test_conn_nop_closed_queue() -> None:
     store = InMemoryByteStore()
-    queue = InMemoryQueue([TOPIC])
-    await queue.close()
+    queue = CloseOnEmptyQueue([TOPIC])
 
     async def handler(request: Request, conn: Connection) -> Defer | Response:
         assert False
