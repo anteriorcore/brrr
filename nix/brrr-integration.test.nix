@@ -42,6 +42,10 @@ let
                 RemainAfterExit = "yes";
                 ExecStart = pkgs.callPackage mkBin { };
               };
+              # Ensure dynamo is truly ready to go
+              preStart = ''
+                aws dynamodb list-tables
+              '';
               environment = {
                 AWS_DEFAULT_REGION = "us-east-1";
                 AWS_REGION = "us-east-1";
@@ -50,6 +54,7 @@ let
                 AWS_SECRET_ACCESS_KEY = "fake";
                 BRRR_TEST_REDIS_URL = "redis://datastores:6379";
               };
+              path = [ pkgs.awscli2 ];
               enable = true;
               wants = [ "multi-user.target" ];
             };
@@ -58,7 +63,6 @@ let
       testScript = ''
         start_all()
 
-        datastores.wait_for_unit("default.target")
         tester.wait_for_unit("default.target")
 
         tester.systemctl("start --no-block ${name}.service")

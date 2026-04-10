@@ -12,6 +12,8 @@ from brrr.store import MemKey, NotFoundError, Store
 from .contract_store import MemoryContract
 
 
+# Dynamo can be very slow in a nixos test
+@pytest.mark.timeout(60)
 @pytest.mark.dependencies
 class TestDynamoByteStore(MemoryContract):
     @asynccontextmanager
