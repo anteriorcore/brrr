@@ -63,6 +63,7 @@ let
       testScript = ''
         start_all()
 
+        datastores.wait_for_unit("default.target")
         tester.wait_for_unit("default.target")
 
         tester.systemctl("start --no-block ${name}.service")
