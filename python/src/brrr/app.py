@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import UserDict
 from collections.abc import (
     Awaitable,
@@ -8,7 +9,7 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass
-from typing import Any, Concatenate, overload
+from typing import Any, Concatenate, assert_never, overload
 
 from brrr.store import NotFoundError
 
@@ -203,16 +204,32 @@ class ActiveWorker[C]:
         If they've all been computed, return their values,
         Otherwise raise jobs for those that haven't been computed
         """
-        defers: list[DeferredCall] = []
-        values = []
+        return await _gather(task_awaitables)
 
-        for task_awaitable in task_awaitables:
-            try:
-                values.append(await task_awaitable)
-            except Defer as d:
-                defers.extend(d.calls)
 
-        if defers:
-            raise Defer(defers)
+async def _get_deferrable(task: Awaitable[Any]) -> Response | Defer:
+    try:
+        return Response(payload=await task)
+    except Defer as e:
+        return e
 
-        return values
+
+# Don’t use me directly.  Only ever legal to use from within an ActiveWorker.
+async def _gather(task_awaitables: Sequence[Awaitable[Any]]) -> Sequence[Any]:
+    rets = await asyncio.gather(*map(_get_deferrable, task_awaitables))
+
+    defers: list[DeferredCall] = []
+    values: list[Any] = []
+    for ret in rets:
+        match ret:
+            case Response(payload=payload):
+                values.append(payload)
+            case Defer(calls=calls):
+                defers.extend(calls)
+            case never:
+                assert_never(never)
+
+    if defers:
+        raise Defer(defers)
+
+    return values
