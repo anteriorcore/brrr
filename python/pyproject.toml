@@ -41,6 +41,9 @@ build-backend = "hatchling.build"
 asyncio_mode = "auto"
 timeout = 10
 markers = ["dependencies: requires external store / queue dependencies running"]
+addopts = [
+    "--doctest-modules",
+]
 
 [tool.mypy]
 strict = true
@@ -48,4 +51,3 @@ strict = true
 [[tool.mypy.overrides]]
 module = ["bencodepy.*"]
 ignore_missing_imports = true
-
