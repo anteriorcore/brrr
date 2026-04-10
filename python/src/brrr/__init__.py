@@ -8,6 +8,9 @@ from .app import (
     AppWorker as AppWorker,
 )
 from .app import (
+    RootId as RootId,
+)
+from .app import (
     Task as Task,
 )
 from .connection import (
