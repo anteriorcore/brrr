@@ -87,16 +87,17 @@ async def test_app_consumer(topic: str, task_name: str) -> None:
 
 async def test_local_brrr(topic: str, task_name: str) -> None:
     name_foo, name_bar = names(task_name, ("foo", "bar"))
+    topic_a, topic_b = names(topic, ("a", "b"))
 
     async def bar(app: TestContext, a: int) -> int:
         assert a == 123
         return 456
 
     async def foo(app: TestContext, a: int) -> int:
-        return await app.call(bar, topic=topic)(a + 1) + 1
+        return await app.call(bar, topic=topic_b)(a + 1) + 1
 
     b = LocalBrrr(
-        topic=topic, handlers={name_foo: foo, name_bar: bar}, codec=DemoPickleCodec()
+        handlers={topic_a: {name_foo: foo}, {topic_b: {name_bar: bar}}, codec=DemoPickleCodec()
     )
     assert await b.run(foo)(122) == 457
 
