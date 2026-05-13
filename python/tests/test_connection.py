@@ -90,6 +90,7 @@ async def test_conn_root_id() -> None:
 async def test_conn_nop_closed_queue() -> None:
     store = InMemoryByteStore()
     queue = CloseOnEmptyQueue([TOPIC])
+    queue.close()
 
     async def handler(request: Request, conn: Connection) -> Defer | Response:
         assert False

@@ -333,6 +333,7 @@ async def test_weird_names(topic: str, task_name: str) -> None:
 async def test_app_nop_closed_queue(topic: str) -> None:
     store = InMemoryByteStore()
     queue = CloseOnEmptyQueue([topic])
+    queue.close()
     async with brrr.serve(queue, store, store) as conn:
         app = AppWorker(handlers={}, codec=DemoPickleCodec(), connection=conn)
         await conn.loop(topic, app.handle)
