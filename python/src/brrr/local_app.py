@@ -1,5 +1,5 @@
 import functools
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Awaitable, Callable
 
@@ -21,7 +21,7 @@ class LocalApp[C]:
         self._app = app
         self._queue = queue
         self._topic = topic
-        self.schedule = functools.partial(app.schedule, topic=topic)
+        self.schedule = app.schedule
         self.read = app.read
         self._has_run = False
 
@@ -29,18 +29,18 @@ class LocalApp[C]:
         if self._has_run:
             raise ValueError("LocalApp has already run")
         self._has_run = True
-        await self._conn.loop(self._topic, self._app.handle)
+        await asyncio.gather(*(self._conn.loop(k, v) for k, v in self.
 
 
 @asynccontextmanager
 async def local_app[C](
-    topic: str, handlers: Mapping[str, Task[C, ..., Any]], codec: Codec[C]
+    handlers: Mapping[str, Mapping[str, Task[C, ..., Any]]], codec: Codec[C]
 ) -> AsyncIterator[LocalApp[C]]:
     """
     Helper function for unit tests which use brrr
     """
     store = InMemoryByteStore()
-    queue = CloseOnEmptyQueue([topic])
+    queue = CloseOnEmptyQueue(handlers)
 
     async with serve(queue, store, store) as conn:
         app = AppWorker(handlers=handlers, codec=codec, connection=conn)
@@ -55,7 +55,7 @@ class LocalBrrr[C]:
     >>>
     >>> async def plus(app: AppWorker, x: int, y: int) -> int: return x + y
     ...
-    >>> b = LocalBrrr(topic="test", handlers=dict(plus=plus), codec=DemoPickleCodec())
+    >>> b = LocalBrrr(handlers=dict(test=dict(plus=plus)), codec=DemoPickleCodec())
     >>> asyncio.run(b.run(plus)(x=1, y=2))
     3
 
@@ -65,9 +65,8 @@ class LocalBrrr[C]:
     """
 
     def __init__(
-        self, topic: str, handlers: Mapping[str, Task[C, ..., Any]], codec: Codec[C]
+        self, handlers: Mapping[str, Mapping[str, Task[C, ..., Any]]], codec: Codec[C]
     ):
-        self.topic = topic
         self.handlers = handlers
         self.codec = codec
 
@@ -85,7 +84,7 @@ class LocalBrrr[C]:
             async with local_app(
                 topic=self.topic, handlers=self.handlers, codec=self.codec
             ) as app:
-                await app.schedule(f)(*args, **kwargs)
+                await app.schedule()(*args, **kwargs)
                 await app.run()
                 return await app.read(f)(*args, **kwargs)
 
