@@ -267,6 +267,7 @@
                 in
                 {
                   default = {
+                    name = "brrr";
                     packages = devPackagesNoPy ++ [ python ];
                     motd = ''
                       This is the generic devshell for brrr development.  Use this to fix
@@ -292,6 +293,7 @@
                     ];
                   };
                   python = {
+                    name = "brrr-py";
                     env = [
                       {
                         name = "REPO_ROOT";
@@ -339,6 +341,7 @@
                     ++ sharedCommands;
                   };
                   typescript = {
+                    name = "brrr-ts";
                     packages = devPackagesNoPy;
                     commands = [
                       {
