@@ -19,6 +19,11 @@ class CloseOnEmptyQueue(Queue):
     queue empty, but not close it yet.  If the next operation is a put, it is
     accepted, and nothing is closed.
 
+    The queue is topic aware: doing a get on topic A, when topic A is empty, but
+    there is a message on topic B, will block the get until a message is
+    available on topic A (or: until the queue is closed, either directly or by
+    another coroutine doing gets until the queue is entirely empty).
+
     Closure of one topic affects all topics.  Existing messages on other topics
     remain available for reading.
 
@@ -26,25 +31,26 @@ class CloseOnEmptyQueue(Queue):
     involving multiple concurrent consumers.
 
     >>> q = CloseOnEmptyQueue(["t1", "t2"])
+    >>> def get(t):
+    ...     async def inner():
+    ...         async with asyncio.timeout(1):
+    ...             return await q.get_message(t)
+    ...     return asyncio.run(inner())
+    ...
     >>> asyncio.run(q.put_message("t1", "foo"))
     >>> asyncio.run(q.put_message("t2", "bar"))
-    >>> asyncio.run(q.get_message("t1"))
+    >>> get("t1")
     Message(body='foo')
-    >>> asyncio.run(q.get_message("t1"))
+    >>> get("t1")
     Traceback (most recent call last):
         ...
-    brrr.queue.QueueIsClosed
+    TimeoutError
     >>> asyncio.run(q.put_message("t1", "frob"))
-    Traceback (most recent call last):
-        ...
-    asyncio.queues.QueueShutDown
-    >>> asyncio.run(q.put_message("t2", "brap"))
-    Traceback (most recent call last):
-        ...
-    asyncio.queues.QueueShutDown
-    >>> asyncio.run(q.get_message("t2"))
+    >>> get("t2")
     Message(body='bar')
-    >>> asyncio.run(q.get_message("t2"))
+    >>> get("t1")
+    Message(body='frob')
+    >>> get("t2")
     Traceback (most recent call last):
         ...
     brrr.queue.QueueIsClosed
@@ -57,15 +63,15 @@ class CloseOnEmptyQueue(Queue):
         # Could be updated to allow dynamically creating topics on-demand but
         # this is probably a bit nicer for now.
         self._queues = {k: asyncio.Queue() for k in topics}
+        self._had_message = False
 
     @typing.override
     async def get_message(self, topic: str) -> Message:
+        if self._had_message and self._empty():
+            self.close()
         q = self._queues[topic]
         try:
-            payload = q.get_nowait()
-        except asyncio.QueueEmpty:
-            self._shutdown()
-            raise QueueIsClosed()
+            payload = await q.get()
         except asyncio.QueueShutDown:
             raise QueueIsClosed()
 
@@ -74,11 +80,15 @@ class CloseOnEmptyQueue(Queue):
 
     @typing.override
     async def put_message(self, topic: str, body: str) -> None:
+        self._had_message = True
         await self._queues[topic].put(body)
 
-    def _shutdown(self) -> None:
+    def close(self) -> None:
         for q in self._queues.values():
             q.shutdown()
+
+    def _empty(self) -> bool:
+        return all(map(lambda q: q.empty(), self._queues.values()))
 
     async def get_info(self, topic: str) -> QueueInfo:
         return QueueInfo(num_messages=self._queues[topic].qsize())
