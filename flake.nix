@@ -255,7 +255,7 @@
                   };
                   toShellVarNoOverwrite = (key: value: '': "''${${lib.toShellVar key value}}"'');
 
-                  toExportShellVar = (key: ''export ${key}'');
+                  toExportShellVar = (key: "export ${key}");
 
                   mkEnvs = (
                     attrset:
