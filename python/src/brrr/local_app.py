@@ -23,12 +23,8 @@ class LocalApp[C]:
         self._topic = topic
         self.schedule = app.schedule
         self.read = app.read
-        self._has_run = False
 
     async def run(self) -> None:
-        if self._has_run:
-            raise ValueError("LocalApp has already run")
-        self._has_run = True
         await asyncio.gather(*(self._conn.loop(k, v) for k, v in self.
 
 
@@ -51,16 +47,15 @@ class LocalBrrr[C]:
     """Helper class for your unit tests to use an ephemeral in-memory brrr.
 
     >>> import asyncio
-    >>> from .demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
+    >>> from .demo_pickle_codec import DemoPickleCodec
     >>>
     >>> async def plus(app: AppWorker, x: int, y: int) -> int: return x + y
     ...
-    >>> b = LocalBrrr(handlers=dict(test=dict(plus=plus)), codec=DemoPickleCodec())
+    >>> b = LocalBrrr(handlers={'test': {'plus': plus}}, codec=DemoPickleCodec())
     >>> asyncio.run(b.run(plus)(x=1, y=2))
     3
-
-    The full state is cleared between each .call.  There is no brrr caching
-    between calls in this local instance.
+    >>> asyncio.run(b.run(plus)(x=0, y=0))
+    0
 
     """
 
@@ -82,7 +77,7 @@ class LocalBrrr[C]:
 
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             async with local_app(
-                topic=self.topic, handlers=self.handlers, codec=self.codec
+                handlers=self.handlers, codec=self.codec
             ) as app:
                 await app.schedule()(*args, **kwargs)
                 await app.run()
