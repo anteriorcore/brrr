@@ -7,7 +7,7 @@
     "brrr-demo": "demo/cli.ts",
     "brrr-test-integration": "scripts/brrr-test-integration.sh"
   },
-  "license": "AGPL-3.0-only",
+  "license": "GPL-3.0-only",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
