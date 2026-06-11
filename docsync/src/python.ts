@@ -40,7 +40,7 @@ function fetchDocStrings(rootNode: SyntaxNode): string[] {
   return docstrings;
 }
 
-function sentinel2docstring(docstring: string): null | [string, string] {
+function pyParse(docstring: string): null | [string, string] {
   const sentinel = parseSentinel(docstring);
   if (!sentinel) {
     return null;
@@ -62,7 +62,7 @@ export async function pythonGetFile(
   const tree = parser.parse(content);
   const docstrings = fetchDocStrings(tree.rootNode);
   return new Map(
-    docstrings.map(sentinel2docstring).filter((x) => x) as [string, string][],
+    docstrings.map(pyParse).filter((x) => x) as [string, string][],
   );
 }
 

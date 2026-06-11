@@ -1,7 +1,7 @@
 import Parser, { type SyntaxNode } from "tree-sitter";
 import TS from "tree-sitter-typescript";
 import { glob, readFile } from "node:fs/promises";
-import { mergeMaps, parseSentinel } from "./utils.ts";
+import { mergeMaps, parseSentinel, treeFold } from "./utils.ts";
 
 const parser = new Parser();
 parser.setLanguage(TS.typescript as any);
@@ -15,20 +15,17 @@ function extractDocString(node: SyntaxNode): string | undefined {
 }
 
 function fetchDocStrings(root: SyntaxNode): string[] {
-  const docstrings: string[] = [];
-
-  function go(node: SyntaxNode): void {
-    const comment = extractDocString(node);
-    if (comment) {
-      docstrings.push(comment);
-    }
-    for (const child of node.namedChildren) {
-      go(child);
-    }
-  }
-
-  go(root);
-  return docstrings;
+  return treeFold(
+    root,
+    (acc: string[], node: SyntaxNode) => {
+      const comment = extractDocString(node);
+      if (comment) {
+        acc.push(comment);
+      }
+      return acc;
+    },
+    [],
+  );
 }
 
 function tsParse(docstring: string): null | [string, string] {
