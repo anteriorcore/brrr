@@ -9,6 +9,11 @@ import { getTypeScriptDocStrings } from "./typescript.ts";
 
 async function main() {
   const [pythonDir, tsDir] = process.argv.slice(2);
+  if (!pythonDir || !tsDir) {
+    console.error("Usage: docsync <PYTHON_DIR> <TYPESCRIPT_DIR>");
+    process.exit(1);
+  }
+
   console.log("Comparing", pythonDir, "and", tsDir);
   const path = {
     python: join(pythonDir, "src/**/*.py"),
