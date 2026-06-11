@@ -4,7 +4,7 @@ import { deepStrictEqual } from "node:assert";
 import { join } from "node:path";
 import process from "node:process";
 
-import { getPythonDocsStrings } from "./python.ts";
+import { pythonGetDir } from "./python.ts";
 import { getTypeScriptDocStrings } from "./typescript.ts";
 
 async function main() {
@@ -20,7 +20,7 @@ async function main() {
     typescript: join(tsDir, "src/**/*.ts"),
   } as const;
 
-  const python = await getPythonDocsStrings(path.python);
+  const python = await pythonGetDir(path.python);
   const ts = await getTypeScriptDocStrings(path.typescript);
 
   deepStrictEqual(python, ts);

@@ -40,28 +40,35 @@ function fetchDocStrings(rootNode: SyntaxNode): string[] {
   return docstrings;
 }
 
-export async function getPythonDocsStrings(path: string) {
-  const files = await Array.fromAsync(glob(path));
-  const docstringMap = new Map<string, string>();
-  for (const file of files) {
-    const content = await readFile(file, "utf-8");
-    const tree = parser.parse(content);
-    const docstrings = fetchDocStrings(tree.rootNode);
-    for (const docstring of docstrings) {
-      const sentinel = parseSentinel(docstring);
-      if (!sentinel) {
-        continue;
-      }
-      const cleaned = docstring
-        .replace(/<docsync>.*?<\/docsync>/g, "") // remove <docsync> tags
-        .replace(/^[ \t]*"""/, "") // remove leading triple quotes
-        .replace(/"""[ \t]*$/, "") // remove trailing triple quotes
-        .replace(/\s*\n\s*/g, " ") // replace newlines with spaces
-        .replace(/\s+/g, " ") // normalize whitespace
-        .trim();
-      docstringMap.set(sentinel, cleaned);
-    }
+function sentinel2docstring(docstring: string): null | [string, string] {
+  const sentinel = parseSentinel(docstring);
+  if (!sentinel) {
+    return null;
   }
+  const cleaned = docstring
+    .replace(/<docsync>.*?<\/docsync>/g, "") // remove <docsync> tags
+    .replace(/^[ \t]*"""/, "") // remove leading triple quotes
+    .replace(/"""[ \t]*$/, "") // remove trailing triple quotes
+    .replace(/\s*\n\s*/g, " ") // replace newlines with spaces
+    .replace(/\s+/g, " ") // normalize whitespace
+    .trim();
+  return [sentinel, cleaned];
+}
 
-  return docstringMap;
+export async function pythonGetFile(
+  path: string,
+): Promise<Map<string, string>> {
+  const content = await readFile(path, "utf-8");
+  const tree = parser.parse(content);
+  const docstrings = fetchDocStrings(tree.rootNode);
+  return new Map(docstrings.map(sentinel2docstring).filter((x) => x) as [string, string][]);
+}
+
+function mergeMaps<T, U>(maps: Map<T, U>[]): Map<T, U> {
+  return new Map(maps.flatMap((x) => [...x]));
+}
+
+export async function pythonGetDir(root: string): Promise<Map<string, string>> {
+  const files = await Array.fromAsync(glob(root));
+  return mergeMaps(await Promise.all(files.map(pythonGetFile)));
 }
