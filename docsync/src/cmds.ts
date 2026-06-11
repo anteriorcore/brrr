@@ -28,3 +28,15 @@ E.g.:
 
   deepStrictEqual(a, b);
 }
+
+export async function docsyncGet(): Promise<void> {
+  const path = process.argv[2];
+  if (!path) {
+    console.error("Usage: docsync-get <PATH>");
+    process.exit(1);
+  }
+
+  const parser = new PathParser();
+  const o = Object.fromEntries((await parser.getPath(path)).entries());
+  console.log(JSON.stringify(o));
+}
