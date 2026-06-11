@@ -1,7 +1,7 @@
 import Parser, { type SyntaxNode } from "tree-sitter";
 import Python from "tree-sitter-python";
 import { glob, readFile } from "node:fs/promises";
-import { parseSentinel } from "./utils.ts";
+import { mergeMaps, parseSentinel } from "./utils.ts";
 
 const parser = new Parser();
 parser.setLanguage(Python as any);
@@ -64,10 +64,6 @@ export async function pythonGetFile(
   return new Map(
     docstrings.map(sentinel2docstring).filter((x) => x) as [string, string][],
   );
-}
-
-function mergeMaps<T, U>(maps: Map<T, U>[]): Map<T, U> {
-  return new Map(maps.flatMap((x) => [...x]));
 }
 
 export async function pythonGetDir(root: string): Promise<Map<string, string>> {

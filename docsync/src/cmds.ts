@@ -14,8 +14,10 @@ export async function docsyncCheck(): Promise<void> {
 
   console.log("Comparing", pythonDir, "and", tsDir);
 
-  const python = await pythonGetDir(pythonDir);
-  const ts = await tsGetDir(tsDir);
+  const [python, ts] = await Promise.all([
+    pythonGetDir(pythonDir),
+    tsGetDir(tsDir),
+  ]);
 
   deepStrictEqual(python, ts);
 }
