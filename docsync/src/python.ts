@@ -61,7 +61,9 @@ export async function pythonGetFile(
   const content = await readFile(path, "utf-8");
   const tree = parser.parse(content);
   const docstrings = fetchDocStrings(tree.rootNode);
-  return new Map(docstrings.map(sentinel2docstring).filter((x) => x) as [string, string][]);
+  return new Map(
+    docstrings.map(sentinel2docstring).filter((x) => x) as [string, string][],
+  );
 }
 
 function mergeMaps<T, U>(maps: Map<T, U>[]): Map<T, U> {
@@ -69,6 +71,6 @@ function mergeMaps<T, U>(maps: Map<T, U>[]): Map<T, U> {
 }
 
 export async function pythonGetDir(root: string): Promise<Map<string, string>> {
-  const files = await Array.fromAsync(glob(root));
+  const files = await Array.fromAsync(glob(root + "/**/*.py"));
   return mergeMaps(await Promise.all(files.map(pythonGetFile)));
 }
