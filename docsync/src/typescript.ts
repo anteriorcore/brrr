@@ -31,10 +31,8 @@ function fetchDocStrings(root: SyntaxNode): string[] {
   return docstrings;
 }
 
-export async function getTypeScriptDocStrings(
-  path: string,
-): Promise<Map<string, string>> {
-  const files = await Array.fromAsync(glob(path));
+export async function tsGetDir(path: string): Promise<Map<string, string>> {
+  const files = await Array.fromAsync(glob(path + "/**/*.ts"));
   const docstringMap = new Map<string, string>();
   for (const file of files) {
     const content = await readFile(file, "utf-8");

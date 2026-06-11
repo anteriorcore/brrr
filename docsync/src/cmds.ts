@@ -3,7 +3,7 @@ import { join } from "node:path";
 import process from "node:process";
 
 import { pythonGetDir } from "./python.ts";
-import { getTypeScriptDocStrings } from "./typescript.ts";
+import { tsGetDir } from "./typescript.ts";
 
 export async function docsyncCheck(): Promise<void> {
   const [pythonDir, tsDir] = process.argv.slice(2);
@@ -13,13 +13,9 @@ export async function docsyncCheck(): Promise<void> {
   }
 
   console.log("Comparing", pythonDir, "and", tsDir);
-  const path = {
-    python: pythonDir,
-    typescript: join(tsDir, "src/**/*.ts"),
-  } as const;
 
-  const python = await pythonGetDir(path.python);
-  const ts = await getTypeScriptDocStrings(path.typescript);
+  const python = await pythonGetDir(pythonDir);
+  const ts = await tsGetDir(tsDir);
 
   deepStrictEqual(python, ts);
 }
