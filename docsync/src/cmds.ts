@@ -5,19 +5,26 @@ import process from "node:process";
 import { PathParser } from "./path-parser.ts";
 
 export async function docsyncCheck(): Promise<void> {
-  const [pythonDir, tsDir] = process.argv.slice(2);
-  if (!pythonDir || !tsDir) {
-    console.error("Usage: docsync-check <PYTHON_DIR> <TYPESCRIPT_DIR>");
+  const [dirA, dirB] = process.argv.slice(2);
+  if (!dirA || !dirB) {
+    console.error(`
+Usage: docsync-check <A> <B>
+
+E.g.:
+
+    $ docsync-check ./typescript/src ./python/src
+
+`);
     process.exit(1);
   }
 
-  console.log("Comparing", pythonDir, "and", tsDir);
+  console.log("Comparing", dirA, "and", dirB);
 
   const parser = new PathParser();
-  const [python, ts] = await Promise.all([
-    parser.getDir(pythonDir),
-    parser.getDir(tsDir),
+  const [a, b] = await Promise.all([
+    parser.getPath(dirA),
+    parser.getPath(dirB),
   ]);
 
-  deepStrictEqual(python, ts);
+  deepStrictEqual(a, b);
 }

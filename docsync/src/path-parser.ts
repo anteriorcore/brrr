@@ -1,4 +1,4 @@
-import { glob } from "node:fs/promises";
+import { glob, stat } from "node:fs/promises";
 import { extname } from "node:path";
 
 import { PythonParser } from "./python.ts";
@@ -42,5 +42,14 @@ export class PathParser {
   async getDir(path: string): Promise<Map<string, string>> {
     const exts = Object.keys(this.parsers).join(",");
     return this.getGlob(`${path}/**/*{${exts}}`);
+  }
+
+  async getPath(path: string): Promise<Map<string, string>> {
+    const s = await stat(path);
+    if (s.isDirectory()) {
+      return this.getDir(path);
+    } else {
+      return this.getFile(path);
+    }
   }
 }
