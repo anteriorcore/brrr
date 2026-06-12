@@ -2,8 +2,7 @@ import { deepStrictEqual } from "node:assert";
 import { join } from "node:path";
 import process from "node:process";
 
-import { PythonParser } from "./python.ts";
-import { TsParser } from "./typescript.ts";
+import { PathParser } from "./path-parser.ts";
 
 export async function docsyncCheck(): Promise<void> {
   const [pythonDir, tsDir] = process.argv.slice(2);
@@ -14,9 +13,10 @@ export async function docsyncCheck(): Promise<void> {
 
   console.log("Comparing", pythonDir, "and", tsDir);
 
+  const parser = new PathParser();
   const [python, ts] = await Promise.all([
-    new PythonParser().getDir(pythonDir),
-    new TsParser().getDir(tsDir),
+    parser.getDir(pythonDir),
+    parser.getDir(tsDir),
   ]);
 
   deepStrictEqual(python, ts);

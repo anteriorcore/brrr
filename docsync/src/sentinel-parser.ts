@@ -1,7 +1,8 @@
-import { glob, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+
 import Parser, { type SyntaxNode } from "tree-sitter";
 
-import { mergeMaps, parseSentinel, treeFold } from "./utils.ts";
+import { parseSentinel, treeFold } from "./utils.ts";
 
 export interface SentinelDocstring {
   sentinel: string;
@@ -40,8 +41,8 @@ export abstract class SentinelParser {
     return { sentinel, docstring: this.cleanDocstring(docstring) };
   }
 
-  async getFile(file: string): Promise<Map<string, string>> {
-    const content = await readFile(file, "utf-8");
+  async parseFile(path: string): Promise<Map<string, string>> {
+    const content = await readFile(path, "utf-8");
     const tree = this.parser.parse(content);
     const docstrings = this.fetchDocStrings(tree.rootNode);
     return new Map(
@@ -52,11 +53,5 @@ export abstract class SentinelParser {
         string,
       ][],
     );
-  }
-
-  async getDir(path: string): Promise<Map<string, string>> {
-    const files = await Array.fromAsync(glob(`${path}/**/*.${this.extension}`));
-    const docstringMap = new Map<string, string>();
-    return mergeMaps(await Promise.all(files.map((x) => this.getFile(x))));
   }
 }
