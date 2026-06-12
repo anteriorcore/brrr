@@ -28,7 +28,14 @@ function fetchDocStrings(root: SyntaxNode): string[] {
   );
 }
 
-function tsParse(docstring: string): null | [string, string] {
+interface SentinelDocstring {
+  sentinel: string;
+  docstring: string;
+}
+
+type SentinelParser = (docstring: string) => null | SentinelDocstring;
+
+function tsParse(docstring: string): null | SentinelDocstring {
   const sentinel = parseSentinel(docstring);
   if (!sentinel) {
     return null;
@@ -41,7 +48,7 @@ function tsParse(docstring: string): null | [string, string] {
     .replace(/\/\/\s?/g, "") // remove line comment prefix
     .replace(/\s+/g, " ")
     .trim();
-  return [sentinel, cleaned];
+  return {sentinel, docstring: cleaned};
 }
 
 export async function tsGetFile(file: string): Promise<Map<string, string>> {
@@ -49,7 +56,7 @@ export async function tsGetFile(file: string): Promise<Map<string, string>> {
   const tree = parser.parse(content);
   const docstrings = fetchDocStrings(tree.rootNode);
   return new Map(
-    docstrings.map(tsParse).filter((x) => x) as [string, string][],
+    docstrings.map(tsParse).flatMap(x => x === null ? [] : [[x.sentinel, x.docstring]]) as [string, string][],
   );
 }
 
