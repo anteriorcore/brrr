@@ -1,7 +1,7 @@
 import Parser, { type SyntaxNode } from "tree-sitter";
 import Python from "tree-sitter-python";
 import { glob, readFile } from "node:fs/promises";
-import { mergeMaps, parseSentinel } from "./utils.ts";
+import { mergeMaps, parseSentinel, treeFold } from "./utils.ts";
 
 const parser = new Parser();
 parser.setLanguage(Python as any);
@@ -19,10 +19,8 @@ function extractDocString(node: SyntaxNode): string | undefined {
   }
 }
 
-function fetchDocStrings(rootNode: SyntaxNode): string[] {
-  const docstrings: string[] = [];
-
-  function go(node: SyntaxNode) {
+function fetchDocStrings(root: SyntaxNode): string[] {
+  return treeFold(root, (acc: string[], node: SyntaxNode) => {
     if (
       node.type === "module" ||
       node.type === "class_definition" ||
@@ -30,14 +28,11 @@ function fetchDocStrings(rootNode: SyntaxNode): string[] {
     ) {
       const doc = extractDocString(node);
       if (doc) {
-        docstrings.push(doc);
+        acc.push(doc);
       }
     }
-    node.namedChildren.map(go);
-  }
-
-  go(rootNode);
-  return docstrings;
+    return acc;
+  }, []);
 }
 
 function pyParse(docstring: string): null | [string, string] {

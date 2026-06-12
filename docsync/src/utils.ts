@@ -15,11 +15,9 @@ export function treeFold<T>(
   callback: (acc: T, node: SyntaxNode) => T,
   init: T,
 ): T {
-  return callback(
-    node.namedChildren.reduce(
-      (acc, child) => treeFold(child, callback, acc),
-      init,
-    ),
-    node,
-  );
+  let acc = callback(init, node);
+  for (const child of node.namedChildren) {
+    acc = treeFold(child, callback, acc);
+  }
+  return acc;
 }
