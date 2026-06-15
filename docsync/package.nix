@@ -8,8 +8,8 @@
 let
   final = package-lock2nix.mkNpmModule {
     src = ./.;
-    passthru.tests.docsync = runCommand "docsync" { } ''
-      ${lib.getExe final} ${../python} ${../typescript}
+    passthru.tests.docsync = runCommand "docsync" { nativeBuildInputs = [ final ]; } ''
+      docsync-check ${../python/src} ${../typescript/src}
       touch $out
     '';
   };

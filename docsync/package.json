@@ -8,7 +8,9 @@
     "start": "node src/index.ts",
     "test": "tsc"
   },
-  "bin": "src/index.ts",
+  "bin": {
+    "docsync-check": "src/docsync-check.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
