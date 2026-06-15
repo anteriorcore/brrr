@@ -4,8 +4,6 @@ import { glob, readFile } from "node:fs/promises";
 import { type SentinelDocstring, SentinelParser } from "./sentinel-parser.ts";
 
 export class TsParser extends SentinelParser {
-  protected override readonly extension = "ts";
-
   constructor() {
     const parser = new Parser();
     parser.setLanguage(TS.typescript as any);

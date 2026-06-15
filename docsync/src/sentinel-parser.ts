@@ -12,7 +12,6 @@ export interface SentinelDocstring {
 export abstract class SentinelParser {
   protected abstract cleanDocstring(docstring: string): string;
   protected abstract extractDocString(node: SyntaxNode): null | string;
-  protected abstract readonly extension: string;
   private readonly parser: Parser;
 
   constructor(parser: Parser) {

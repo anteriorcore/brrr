@@ -4,8 +4,6 @@ import Python from "tree-sitter-python";
 import { type SentinelDocstring, SentinelParser } from "./sentinel-parser.ts";
 
 export class PythonParser extends SentinelParser {
-  protected override readonly extension = "py";
-
   constructor() {
     const parser = new Parser();
     parser.setLanguage(Python as any);

@@ -21,10 +21,6 @@ export class PathParser {
     return this.parsers[extname(path)] || null;
   }
 
-  private hasParser(path: string): boolean {
-    return extname(path) in this.parsers;
-  }
-
   async getFile(path: string): Promise<Map<string, string>> {
     const parser = this.getParser(path);
     if (!parser) {
