@@ -40,21 +40,21 @@ E.g.:
  * <docsync>CmdGet</docsync>
  */
 export async function docsyncGet(): Promise<void> {
-  const [path, slug] = process.argv.slice(2);
-  if (!path) {
+  const [path, slug, ...extra] = process.argv.slice(2);
+  if (!path || extra.length > 0) {
     console.error(`
 Usage: docsync-get <PATH> [SLUG]
 
 Example:
 
-    $ docsync-get ./src/cmds.ts | jq
+    $ docsync-get ./some/example.ts | jq
     {
-      "CmdCheck": "docsync-check checks if two directories' doc tags are in sync.",
-      "CmdGet": "docsync-get extracts all docsync nodes under a path."
+      "Foo": "Foo class with its foo docstring",
+      "Bar": "The Bar class also has an important docstring"
     }
 
-    $ docsync-get ./src/cmds.ts CmdGet
-    docsync-get extracts all docsync nodes under a path.
+    $ docsync-get ./some/example.ts Foo
+    Foo class with its docstring
 `);
     process.exit(1);
   }
@@ -63,7 +63,7 @@ Example:
   const m = await parser.getPath(path);
   if (slug !== undefined) {
     if (!m.has(slug)) {
-      console.error(`No such key ${slug} in docsync tags for ${path}`);
+      console.error(`No such key ${slug} in docsync tags for ${path}.`);
       process.exit(1);
     }
     console.log(m.get(slug));

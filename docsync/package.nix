@@ -24,12 +24,14 @@ let
         fixture = builtins.toFile "fixture" (builtins.toJSON fixtures);
       in
       ''
-        f="$(mktemp)"
-        $out/bin/docsync-get ${./src} > $f
-        diff -u <(jq --sort-keys . ${fixture}) <(jq --sort-keys . $f)
-        $out/bin/docsync-get ${./src} CmdGet > $f
-        diff -u ${builtins.toFile "test" (fixtures.CmdGet + "\n")} $f
-        ! $out/bin/docsync-get ${./src} NonExistentKey
+        $out/bin/docsync-get ${./src} > full-out
+        diff -u <(jq --sort-keys . ${fixture}) <(jq --sort-keys . full-out)
+
+        $out/bin/docsync-get ${./src} CmdGet > single-out
+        diff -u ${builtins.toFile "test" (fixtures.CmdGet + "\n")} single-out
+
+        ! $out/bin/docsync-get ${./src} KeyWhichDoesntExistForTestingSake
+        ! $out/bin/docsync-get ${./src} CmdGet extra-arg
       '';
     passthru.tests.docsync = runCommand "docsync" { nativeBuildInputs = [ final ]; } ''
       docsync-check ${../python/src} ${../typescript/src}
