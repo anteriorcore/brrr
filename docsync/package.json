@@ -9,7 +9,8 @@
     "test": "tsc"
   },
   "bin": {
-    "docsync-check": "src/docsync-check.ts"
+    "docsync-check": "src/docsync-check.ts",
+    "docsync-get": "src/docsync-get.ts"
   },
   "keywords": [],
   "author": "",
