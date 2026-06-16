@@ -8,21 +8,23 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "systems": "systems",
+        "package-lock2nix": "package-lock2nix",
+        "systems": "systems_2",
         "treefmt-nix": [
           "treefmt-nix"
         ]
       },
       "locked": {
-        "lastModified": 1780585174,
-        "narHash": "sha256-j/ik564Wm8C27U+VD4Uk6vPNH86pbfZUFApuWsv89/U=",
+        "lastModified": 1781650645,
+        "narHash": "sha256-NNiS6cxeAdIJ9WGRRKTX+Tj9mAvR7oVRPD/KCTjBmGk=",
         "owner": "anteriorcore",
         "repo": "tools",
-        "rev": "669156f5ac69b9bec84d86c6164da5477b457ecb",
+        "rev": "20537653349af44679c58239c0c5c5dc64d60ba1",
         "type": "github"
       },
       "original": {
         "owner": "anteriorcore",
+        "ref": "pull/19/head",
         "repo": "tools",
         "type": "github"
       }
@@ -47,7 +49,7 @@
     },
     "flake-parts": {
       "inputs": {
-        "nixpkgs-lib": "nixpkgs-lib"
+        "nixpkgs-lib": "nixpkgs-lib_2"
       },
       "locked": {
         "lastModified": 1778716662,
@@ -65,7 +67,25 @@
     },
     "globset": {
       "inputs": {
-        "nixpkgs-lib": "nixpkgs-lib_2"
+        "nixpkgs-lib": "nixpkgs-lib"
+      },
+      "locked": {
+        "lastModified": 1756146523,
+        "narHash": "sha256-dn8WNgwVQe0xBJ/d4CiRRcEVSgNclG6WSbqFEf6V024=",
+        "owner": "pdtpartners",
+        "repo": "globset",
+        "rev": "62da8904981f01dc7c97f56c3ea4f131a8393411",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pdtpartners",
+        "repo": "globset",
+        "type": "github"
+      }
+    },
+    "globset_2": {
+      "inputs": {
+        "nixpkgs-lib": "nixpkgs-lib_3"
       },
       "locked": {
         "lastModified": 1756146523,
@@ -99,6 +119,21 @@
     },
     "nixpkgs-lib": {
       "locked": {
+        "lastModified": 1754788789,
+        "narHash": "sha256-x2rJ+Ovzq0sCMpgfgGaaqgBSwY+LST+WbZ6TytnT9Rk=",
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "rev": "a73b9c743612e4244d865a2fdee11865283c04e6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "type": "github"
+      }
+    },
+    "nixpkgs-lib_2": {
+      "locked": {
         "lastModified": 1777168982,
         "narHash": "sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ=",
         "owner": "nix-community",
@@ -112,7 +147,7 @@
         "type": "github"
       }
     },
-    "nixpkgs-lib_2": {
+    "nixpkgs-lib_3": {
       "locked": {
         "lastModified": 1754788789,
         "narHash": "sha256-x2rJ+Ovzq0sCMpgfgGaaqgBSwY+LST+WbZ6TytnT9Rk=",
@@ -162,13 +197,44 @@
     "package-lock2nix": {
       "inputs": {
         "flake-parts": [
+          "anterior-tools",
           "flake-parts"
         ],
         "globset": "globset",
         "nixpkgs": [
+          "anterior-tools",
           "nixpkgs"
         ],
-        "systems": "systems_2",
+        "systems": "systems",
+        "treefmt-nix": [
+          "anterior-tools",
+          "treefmt-nix"
+        ]
+      },
+      "locked": {
+        "lastModified": 1781065150,
+        "narHash": "sha256-HrqxSjZ1/66T9U/Kwh3Ooq89EK0rH/jn6lnEa0yib0s=",
+        "owner": "anteriorcore",
+        "repo": "package-lock2nix",
+        "rev": "5a5b27fa19ecbca004fb0dc429dd853b37e2e318",
+        "type": "github"
+      },
+      "original": {
+        "owner": "anteriorcore",
+        "repo": "package-lock2nix",
+        "type": "github"
+      }
+    },
+    "package-lock2nix_2": {
+      "inputs": {
+        "flake-parts": [
+          "flake-parts"
+        ],
+        "globset": "globset_2",
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "systems": "systems_3",
         "treefmt-nix": [
           "treefmt-nix"
         ]
@@ -254,12 +320,12 @@
         "devshell": "devshell",
         "flake-parts": "flake-parts",
         "nixpkgs": "nixpkgs_2",
-        "package-lock2nix": "package-lock2nix",
+        "package-lock2nix": "package-lock2nix_2",
         "process-compose-flake": "process-compose-flake",
         "pyproject-build-systems": "pyproject-build-systems",
         "pyproject-nix": "pyproject-nix",
         "services-flake": "services-flake",
-        "systems": "systems_3",
+        "systems": "systems_4",
         "treefmt-nix": "treefmt-nix",
         "uv2nix": "uv2nix"
       }
@@ -308,6 +374,20 @@
       }
     },
     "systems_3": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "id": "systems",
+        "type": "indirect"
+      }
+    },
+    "systems_4": {
       "locked": {
         "lastModified": 1681028828,
         "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
