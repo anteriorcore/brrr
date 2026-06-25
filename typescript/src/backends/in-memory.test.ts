@@ -1,6 +1,14 @@
 import { suite, test } from "node:test";
-import { InMemoryCache, InMemoryStore } from "./in-memory.ts";
-import { cacheContractTest, storeContractTest } from "../store.test.ts";
+import {
+  CloseOnEmptyQueue,
+  InMemoryCache,
+  InMemoryStore,
+} from "./in-memory.ts";
+import {
+  cacheContractTest,
+  queueContractTest,
+  storeContractTest,
+} from "../store.test.ts";
 
 await suite(import.meta.filename, async () => {
   await test(InMemoryStore.name, async () => {
@@ -15,5 +23,13 @@ await suite(import.meta.filename, async () => {
       cache: new InMemoryCache(),
       async [Symbol.asyncDispose]() {},
     }));
+  });
+
+  await suite(CloseOnEmptyQueue.name, async () => {
+    await queueContractTest(async (topics) => ({
+      queue: new CloseOnEmptyQueue(topics),
+      async [Symbol.asyncDispose]() {},
+    }));
+    await test("Basic push and pop", async () => {});
   });
 });

@@ -23,6 +23,7 @@ import {
 import { InMemoryStore } from "./backends/in-memory.ts";
 import type { Call } from "./call.ts";
 import { PendingReturn, TaggedTuple } from "./tagged-tuple.ts";
+import type { Queue } from "./queue.ts";
 
 await suite(import.meta.filename, async () => {
   await suite(PendingReturns.name, async () => {
@@ -393,6 +394,26 @@ export async function cacheContractTest(
       strictEqual(initialValue, 1);
       const nextValue = await resource.cache.incr(key);
       strictEqual(nextValue, 2);
+    });
+  });
+}
+
+export async function queueContractTest(
+  acquireResource: (
+    topics: string[],
+  ) => Promise<{ queue: Queue } & AsyncDisposable>,
+) {
+  await suite("queue-contract", async () => {
+    const t1 = "t1";
+
+    await test("Basic push and pop", async () => {
+      await using resource = await acquireResource([t1]);
+      const foo = resource.queue.getMessage(t1);
+      const bar = resource.queue.getMessage(t1);
+      await resource.queue.putMessage(t1, "foo");
+      await resource.queue.putMessage(t1, "bar");
+      deepStrictEqual(await foo, { closed: false, message: { body: "foo" } });
+      deepStrictEqual(await bar, { closed: false, message: { body: "bar" } });
     });
   });
 }

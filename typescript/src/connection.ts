@@ -2,9 +2,8 @@ import type { Call } from "./call.ts";
 import { type Cache, Memory, type Store } from "./store.ts";
 import { SpawnLimitError } from "./errors.ts";
 import { randomUUID } from "node:crypto";
-import type { Publisher, Subscriber } from "./emitter.ts";
-import { BrrrShutdownSymbol, BrrrTaskDoneEventSymbol } from "./symbol.ts";
 import { PendingReturn, ScheduleMessage, TaggedTuple } from "./tagged-tuple.ts";
+import type { Queue } from "./queue.ts";
 
 export interface DeferredCall {
   readonly topic: string | undefined;
@@ -35,20 +34,20 @@ export type RequestHandler = (
 export class Connection {
   public readonly cache: Cache;
   public readonly memory: Memory;
-  public readonly emitter: Publisher;
+  public readonly queue: Queue;
   public readonly spawnLimit = 10_000;
 
-  public constructor(store: Store, cache: Cache, emitter: Publisher) {
+  public constructor(store: Store, cache: Cache, queue: Queue) {
     this.cache = cache;
     this.memory = new Memory(store);
-    this.emitter = emitter;
+    this.queue = queue;
   }
 
   public async putJob(topic: string, job: ScheduleMessage): Promise<void> {
     if ((await this.cache.incr(`brrr/count/${job.rootId}`)) > this.spawnLimit) {
       throw new SpawnLimitError(this.spawnLimit, job.rootId, job.callHash);
     }
-    await this.emitter.emit(topic, TaggedTuple.encodeToString(job));
+    await this.queue.putMessage(topic, TaggedTuple.encodeToString(job));
   }
 
   public async scheduleRaw(topic: string, call: Call): Promise<void> {
@@ -66,27 +65,20 @@ export class Connection {
 }
 
 export class Server extends Connection {
-  public constructor(store: Store, cache: Cache, emitter: Publisher) {
-    super(store, cache, emitter);
+  public constructor(store: Store, cache: Cache, queue: Queue) {
+    super(store, cache, queue);
   }
 
-  public async loop(
-    topic: string,
-    handler: RequestHandler,
-    getMessage: () => Promise<string | typeof BrrrShutdownSymbol | undefined>,
-  ) {
+  public async loop(topic: string, handler: RequestHandler) {
     while (true) {
-      const message = await getMessage();
-      if (!message) {
+      const response = await this.queue.getMessage(topic);
+      if (!response) {
         continue;
       }
-      if (message === BrrrShutdownSymbol) {
+      if (response.closed) {
         break;
       }
-      const call = await this.handleMessage(handler, topic, message);
-      if (call) {
-        await this.emitter.emitEventSymbol?.(BrrrTaskDoneEventSymbol, call);
-      }
+      await this.handleMessage(handler, topic, response.message.body);
     }
   }
 
@@ -160,27 +152,5 @@ export class Server extends Connection {
       const job = new ScheduleMessage(parent.rootId, callHash);
       await this.putJob(child.topic || topic, job);
     }
-  }
-}
-
-export class SubscriberServer extends Server {
-  public override readonly emitter: Publisher & Subscriber;
-
-  public constructor(
-    store: Store,
-    cache: Cache,
-    emitter: Publisher & Subscriber,
-  ) {
-    super(store, cache, emitter);
-    this.emitter = emitter;
-  }
-
-  public listen(topic: string, handler: RequestHandler) {
-    this.emitter.on(topic, async (callId: string): Promise<void> => {
-      const result = await this.handleMessage(handler, topic, callId);
-      if (result) {
-        await this.emitter.emitEventSymbol?.(BrrrTaskDoneEventSymbol, result);
-      }
-    });
   }
 }

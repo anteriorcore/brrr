@@ -1,8 +1,6 @@
 import type { Cache, MemKey, Store } from "../store.ts";
-import type { Publisher, Subscriber } from "../emitter.ts";
-import { EventEmitter } from "node:events";
-import type { Call } from "../call.ts";
-import { BrrrTaskDoneEventSymbol } from "../symbol.ts";
+import type { GetMessageReponse, Message, Queue } from "../queue.ts";
+import { Readable, Transform } from "node:stream";
 
 export class InMemoryStore implements Store {
   private store = new Map<string, Uint8Array>();
@@ -86,29 +84,81 @@ export class InMemoryCache implements Cache {
   }
 }
 
-export class InMemoryEmitter implements Publisher, Subscriber {
-  private readonly emitter = new EventEmitter();
-  private readonly eventEmitter = new EventEmitter();
+export class BlockingQueue<T> {
+  private readonly stream: Readable;
 
-  public on(topic: string, listener: (callId: string) => void): void {
-    this.emitter.on(topic, listener);
+  constructor() {
+    this.stream = new Transform({
+      objectMode: true, // allow value other than byte array
+    });
   }
 
-  public onEventSymbol(
-    event: typeof BrrrTaskDoneEventSymbol,
-    listener: (call: Call) => void,
-  ): void {
-    this.eventEmitter.on(event, listener);
+  push(value: T) {
+    this.stream.push(value);
   }
 
-  public async emit(topic: string, callId: string): Promise<void> {
-    this.emitter.emit(topic, callId);
+  async get(): Promise<T> {
+    const { value } = await this.stream.iterator().next();
+    return value as Promise<T>;
   }
 
-  public async emitEventSymbol(
-    event: typeof BrrrTaskDoneEventSymbol,
-    call: Call,
-  ): Promise<void> {
-    this.eventEmitter.emit(event, call);
+  size(): number {
+    return this.stream.readableLength;
+  }
+
+  isEmpty(): boolean {
+    return this.size() === 0;
+  }
+
+  close() {
+    this.stream.emit("close");
+  }
+}
+
+export class CloseOnEmptyQueue implements Queue {
+  queues: ReadonlyMap<string, BlockingQueue<string>>;
+
+  hadMessage = false;
+
+  constructor(topics: Iterable<string>) {
+    this.queues = new Map(
+      [...topics].map((topic) => [topic, new BlockingQueue()]),
+    );
+  }
+
+  async putMessage(topic: string, body: string): Promise<void> {
+    this.hadMessage = true;
+    this.getQueue(topic).push(body);
+  }
+
+  async getMessage(topic: string): Promise<GetMessageReponse> {
+    if (this.hadMessage && this.isEmpty()) {
+      this.close();
+      return {
+        closed: true,
+      };
+    }
+    const queue = this.getQueue(topic);
+    const body = await queue.get();
+    // NOMERGE task_done
+    return { closed: false, message: { body } };
+  }
+
+  private getQueue(topic: string) {
+    const queue = this.queues.get(topic);
+    if (!queue) {
+      throw new Error("NO SUCH QUEUE");
+    }
+    return queue;
+  }
+
+  private isEmpty() {
+    return this.queues.values().every((queue) => queue.isEmpty());
+  }
+
+  private close() {
+    for (const [_, queue] of this.queues) {
+      queue.close();
+    }
   }
 }

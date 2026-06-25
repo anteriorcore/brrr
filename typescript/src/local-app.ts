@@ -1,4 +1,3 @@
-import { SubscriberServer } from "./connection.ts";
 import {
   AppWorker,
   type NoContextTask,
@@ -9,25 +8,21 @@ import {
 } from "./app.ts";
 import type { Codec } from "./codec.ts";
 import {
+  CloseOnEmptyQueue,
   InMemoryCache,
-  InMemoryEmitter,
   InMemoryStore,
 } from "./backends/in-memory.ts";
 import { NotFoundError } from "./errors.ts";
-import { BrrrTaskDoneEventSymbol } from "./symbol.ts";
+import { Server } from "./connection.ts";
 
 export class LocalApp<C> {
   public readonly topic: string;
-  public readonly server: SubscriberServer;
+  public readonly server: Server;
   public readonly app: AppWorker<C>;
 
   private hasRun = false;
 
-  public constructor(
-    topic: string,
-    server: SubscriberServer,
-    app: AppWorker<C>,
-  ) {
+  public constructor(topic: string, server: Server, app: AppWorker<C>) {
     this.topic = topic;
     this.server = server;
     this.app = app;
@@ -45,12 +40,12 @@ export class LocalApp<C> {
     return this.app.read(...args);
   }
 
-  public run(): void {
+  public async run(): Promise<void> {
     if (this.hasRun) {
       throw new Error("LocalApp has already been run");
     }
     this.hasRun = true;
-    this.server.listen(this.topic, this.app.handle);
+    await this.server.loop(this.topic, this.app.handle);
   }
 }
 
@@ -66,8 +61,8 @@ export class LocalBrrr<C> {
   public run<A extends unknown[], R>(taskIdentifier: TaskIdentifier<C, A, R>) {
     const store = new InMemoryStore();
     const cache = new InMemoryCache();
-    const emitter = new InMemoryEmitter();
-    const server = new SubscriberServer(store, cache, emitter);
+    const queue = new CloseOnEmptyQueue([this.topic]);
+    const server = new Server(store, cache, queue);
     const worker = new AppWorker(
       this.registry.codec,
       server,
@@ -79,27 +74,9 @@ export class LocalBrrr<C> {
       this.registry.handlers,
     );
     return async (...args: A): Promise<R> => {
-      localApp.run();
       await localApp.schedule(taskName)(...args);
-      const call = await this.registry.codec.encodeCall(taskName, args);
-      return new Promise((resolve) => {
-        emitter.onEventSymbol(BrrrTaskDoneEventSymbol, async ({ callHash }) => {
-          if (callHash === call.callHash) {
-            const payload = await server.readRaw(callHash);
-            if (!payload) {
-              throw new NotFoundError({
-                type: "value",
-                callHash,
-              });
-            }
-            const result = this.registry.codec.decodeReturn(
-              taskName,
-              payload,
-            ) as R;
-            resolve(result);
-          }
-        });
-      });
+      await localApp.run();
+      return localApp.read(taskIdentifier)(...args);
     };
   }
 }
