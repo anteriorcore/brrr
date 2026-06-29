@@ -27,14 +27,12 @@ let
     pkgs.testers.runNixOSTest {
       inherit name;
       nodes = nodes // {
-        datastores =
-          { ... }:
-          {
-            imports = [
-              self.inputs.anterior-tools.nixosModules.dynamodb
-              ./datastores.nix
-            ];
-          };
+        datastores = { ... }: {
+          imports = [
+            self.inputs.anterior-tools.nixosModules.dynamodb
+            ./datastores.nix
+          ];
+        };
         # Separate node entirely just for the actual testing
         tester =
           { config, pkgs, ... }:
@@ -95,79 +93,67 @@ let
     AWS_SECRET_ACCESS_KEY = "bar";
   };
   module = {
-    server =
-      { config, pkgs, ... }:
-      {
-        imports = [ self.nixosModules.brrr-demo ];
-        networking.firewall.allowedTCPPorts = [ 8080 ];
-        services.brrr-demo = {
-          enable = true;
-          package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-py;
-          args = [ "web_server" ];
-          environment = demoEnvs;
-        };
+    server = { config, pkgs, ... }: {
+      imports = [ self.nixosModules.brrr-demo ];
+      networking.firewall.allowedTCPPorts = [ 8080 ];
+      services.brrr-demo = {
+        enable = true;
+        package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-py;
+        args = [ "web_server" ];
+        environment = demoEnvs;
       };
-    pyworker =
-      { config, pkgs, ... }:
-      {
-        imports = [ self.nixosModules.brrr-demo ];
-        services.brrr-demo = {
-          enable = true;
-          package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-py;
-          args = [ "brrr_worker" ];
-          environment = demoEnvs;
-        };
+    };
+    pyworker = { config, pkgs, ... }: {
+      imports = [ self.nixosModules.brrr-demo ];
+      services.brrr-demo = {
+        enable = true;
+        package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-py;
+        args = [ "brrr_worker" ];
+        environment = demoEnvs;
       };
-    tsworker =
-      { config, pkgs, ... }:
-      {
-        imports = [ self.nixosModules.brrr-demo ];
-        services.brrr-demo = {
-          enable = true;
-          package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-ts;
-          environment = demoEnvs;
-        };
+    };
+    tsworker = { config, pkgs, ... }: {
+      imports = [ self.nixosModules.brrr-demo ];
+      services.brrr-demo = {
+        enable = true;
+        package = self.packages.${pkgs.stdenv.hostPlatform.system}.brrr-demo-ts;
+        environment = demoEnvs;
       };
+    };
   };
   docker = {
-    server =
-      { config, pkgs, ... }:
-      {
-        # Podman (default backend) doesn’t like images built with nix
-        # apparently.  Ironic!
-        virtualisation.oci-containers.backend = "docker";
-        virtualisation.oci-containers.containers.brrr = {
-          extraOptions = [ "--network=host" ];
-          image = "brrr-demo-py:latest";
-          imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-py;
-          environment = demoEnvs;
-          cmd = [ "web_server" ];
-        };
-        networking.firewall.allowedTCPPorts = [ 8080 ];
+    server = { config, pkgs, ... }: {
+      # Podman (default backend) doesn’t like images built with nix
+      # apparently.  Ironic!
+      virtualisation.oci-containers.backend = "docker";
+      virtualisation.oci-containers.containers.brrr = {
+        extraOptions = [ "--network=host" ];
+        image = "brrr-demo-py:latest";
+        imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-py;
+        environment = demoEnvs;
+        cmd = [ "web_server" ];
       };
-    pyworker =
-      { config, pkgs, ... }:
-      {
-        virtualisation.oci-containers.backend = "docker";
-        virtualisation.oci-containers.containers.brrr = {
-          extraOptions = [ "--network=host" ];
-          image = "brrr-demo-py:latest";
-          imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-py;
-          cmd = [ "brrr_worker" ];
-          environment = demoEnvs;
-        };
+      networking.firewall.allowedTCPPorts = [ 8080 ];
+    };
+    pyworker = { config, pkgs, ... }: {
+      virtualisation.oci-containers.backend = "docker";
+      virtualisation.oci-containers.containers.brrr = {
+        extraOptions = [ "--network=host" ];
+        image = "brrr-demo-py:latest";
+        imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-py;
+        cmd = [ "brrr_worker" ];
+        environment = demoEnvs;
       };
-    tsworker =
-      { config, pkgs, ... }:
-      {
-        virtualisation.oci-containers.backend = "docker";
-        virtualisation.oci-containers.containers.brrr-ts = {
-          extraOptions = [ "--network=host" ];
-          image = "brrr-demo-ts:latest";
-          imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-ts;
-          environment = demoEnvs;
-        };
+    };
+    tsworker = { config, pkgs, ... }: {
+      virtualisation.oci-containers.backend = "docker";
+      virtualisation.oci-containers.containers.brrr-ts = {
+        extraOptions = [ "--network=host" ];
+        image = "brrr-demo-ts:latest";
+        imageFile = self.packages.${pkgs.stdenv.hostPlatform.system}.docker-ts;
+        environment = demoEnvs;
       };
+    };
   };
 in
 {

@@ -24,41 +24,37 @@ let
       inherit name;
       globalTimeout = 5 * 60;
       nodes = {
-        datastores =
-          { ... }:
-          {
-            imports = [
-              self.inputs.anterior-tools.nixosModules.dynamodb
-              ./datastores.nix
-            ];
-          };
-        tester =
-          { pkgs, ... }:
-          {
-            systemd.services.${name} = {
-              serviceConfig = {
-                Type = "oneshot";
-                Restart = "no";
-                RemainAfterExit = "yes";
-                ExecStart = pkgs.callPackage mkBin { };
-              };
-              # Ensure dynamo is truly ready to go
-              preStart = ''
-                aws dynamodb list-tables
-              '';
-              environment = {
-                AWS_DEFAULT_REGION = "us-east-1";
-                AWS_REGION = "us-east-1";
-                AWS_ENDPOINT_URL = "http://datastores:8000";
-                AWS_ACCESS_KEY_ID = "fake";
-                AWS_SECRET_ACCESS_KEY = "fake";
-                BRRR_TEST_REDIS_URL = "redis://datastores:6379";
-              };
-              path = [ pkgs.awscli2 ];
-              enable = true;
-              wants = [ "multi-user.target" ];
+        datastores = { ... }: {
+          imports = [
+            self.inputs.anterior-tools.nixosModules.dynamodb
+            ./datastores.nix
+          ];
+        };
+        tester = { pkgs, ... }: {
+          systemd.services.${name} = {
+            serviceConfig = {
+              Type = "oneshot";
+              Restart = "no";
+              RemainAfterExit = "yes";
+              ExecStart = pkgs.callPackage mkBin { };
             };
+            # Ensure dynamo is truly ready to go
+            preStart = ''
+              aws dynamodb list-tables
+            '';
+            environment = {
+              AWS_DEFAULT_REGION = "us-east-1";
+              AWS_REGION = "us-east-1";
+              AWS_ENDPOINT_URL = "http://datastores:8000";
+              AWS_ACCESS_KEY_ID = "fake";
+              AWS_SECRET_ACCESS_KEY = "fake";
+              BRRR_TEST_REDIS_URL = "redis://datastores:6379";
+            };
+            path = [ pkgs.awscli2 ];
+            enable = true;
+            wants = [ "multi-user.target" ];
           };
+        };
       };
       testScript = ''
         start_all()

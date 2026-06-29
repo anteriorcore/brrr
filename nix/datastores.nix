@@ -1,5 +1,4 @@
-{ config, pkgs, ... }:
-{
+{ config, pkgs, ... }: {
   services.redis.servers.main = {
     enable = true;
     port = 6379;
