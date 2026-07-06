@@ -38,6 +38,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-      - uses: nixbuild/nix-quick-install-action@2a741a8cc7db7768a8a25d92521c2da7ff1846d2
+      - uses: nixbuild/nix-quick-install-action@5022709dfbaea01a71db614fb2e2a4b04168141b
       # No need for a cache
       - run: nix flake show
