@@ -282,6 +282,43 @@ await suite(import.meta.filename, async () => {
         strictEqual(mockFn.mock.callCount(), 1);
         strictEqual(await store.get(fixture.pendingReturns.key), undefined);
       });
+
+      await test("delivers each return to f exactly once across CAS retries", async () => {
+        const initialReturns = [
+          new PendingReturn("a", "b", "c"),
+          new PendingReturn("d", "e", "f"),
+        ];
+        const concurrentReturn = new PendingReturn("g", "h", "i");
+        await store.set(
+          fixture.pendingReturns.key,
+          new PendingReturns(undefined, initialReturns).encode(),
+        );
+        const delivered: string[] = [];
+        await memory.withPendingReturnsRemove(
+          fixture.pendingReturns.key.callHash,
+          async (returns) => {
+            const isFirstInvocation = delivered.length === 0;
+            delivered.push(
+              ...[...returns].map((it) => TaggedTuple.encodeToString(it)),
+            );
+            if (isFirstInvocation) {
+              // Race a concurrent addPendingReturns between the get and the
+              // compareAndDelete to force a CAS retry.
+              await memory.addPendingReturns(
+                fixture.pendingReturns.key.callHash,
+                concurrentReturn,
+              );
+            }
+          },
+        );
+        deepStrictEqual(
+          [...delivered].sort(),
+          [...initialReturns, concurrentReturn]
+            .map((it) => TaggedTuple.encodeToString(it))
+            .sort(),
+        );
+        strictEqual(await store.get(fixture.pendingReturns.key), undefined);
+      });
     });
   });
 });

@@ -238,20 +238,23 @@ export class Memory {
       type: "pending_returns",
       callHash,
     };
-    const handled = new Set<PendingReturn>();
+    const handled = new Set<string>();
     return this.withCas(async () => {
       const pendingEncoded = await this.store.get(memKey);
       if (!pendingEncoded) {
         return true;
       }
+      const toHandleEncoded =
+        PendingReturns.decode(pendingEncoded).encodedReturns.difference(
+          handled,
+        );
       const toHandle = new Set(
-        PendingReturns.decode(pendingEncoded)
-          .encodedReturns.difference(handled)
+        toHandleEncoded
           .values()
           .map((it) => TaggedTuple.decodeFromString(PendingReturn, it)),
       );
       await f(toHandle);
-      for (const it of toHandle) {
+      for (const it of toHandleEncoded) {
         handled.add(it);
       }
       return this.store.compareAndDelete(memKey, pendingEncoded);
