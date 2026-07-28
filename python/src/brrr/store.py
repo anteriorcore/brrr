@@ -350,11 +350,7 @@ class Memory:
             except NotFoundError:
                 # No pending returns means we were raced by a concurrent
                 # execution of the same call with the same parent.
-                # Unfortunately because of how Python context managers work, we
-                # must yield _something_.  Yuck.
-                #
-                # https://stackoverflow.com/a/34519857
-                return await f([])
+                return
             to_handle = PendingReturns.decode(pending_enc).returns - handled
             logger.debug(f"Handling returns for {call_hash}: {to_handle}...")
             await f(to_handle)
