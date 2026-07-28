@@ -25,6 +25,7 @@ let
   mkTest =
     { nodes, name }:
     pkgs.testers.runNixOSTest {
+      defaults.virtualisation.diskSize = 5000;
       inherit name;
       nodes = nodes // {
         datastores = { ... }: {
