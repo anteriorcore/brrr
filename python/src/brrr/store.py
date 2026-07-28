@@ -340,6 +340,16 @@ class Memory:
     async def with_pending_returns_remove(
         self, call_hash: str, f: Callable[[Iterable[PendingReturn]], Awaitable[None]]
     ) -> None:
+        """Remove pending returns for this call.
+
+        The callback is called and awaited for every pending return, and only
+        when it returns successfully are the pending returns actually cleared
+        from the underlying datastore.
+
+        The callback can be called zero or more times, and any pending return
+        can be passed to the callback multiple times.
+
+        """
         memkey = MemKey("pending_returns", call_hash)
         handled: set[PendingReturn] = set()
 
@@ -350,11 +360,7 @@ class Memory:
             except NotFoundError:
                 # No pending returns means we were raced by a concurrent
                 # execution of the same call with the same parent.
-                # Unfortunately because of how Python context managers work, we
-                # must yield _something_.  Yuck.
-                #
-                # https://stackoverflow.com/a/34519857
-                return await f([])
+                return
             to_handle = PendingReturns.decode(pending_enc).returns - handled
             logger.debug(f"Handling returns for {call_hash}: {to_handle}...")
             await f(to_handle)
