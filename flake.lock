@@ -174,11 +174,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783450474,
-        "narHash": "sha256-nEZ8+H75MkObhnOn4/nrOrUhAmaZwWfKmZpPLfULnL8=",
+        "lastModified": 1785265864,
+        "narHash": "sha256-bjzVAyDzoHdxPeF3+PjxQD3GOrQyIgXzKhzNrvNc+Fc=",
         "owner": "anteriorai",
         "repo": "package-lock2nix",
-        "rev": "4186f6ff90705e74047fa2227e631c6c1d9bc183",
+        "rev": "b987caebd0ee63dedf0dce4b21b0ea7892ff190b",
         "type": "github"
       },
       "original": {
