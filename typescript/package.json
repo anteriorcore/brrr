@@ -38,7 +38,7 @@
     "bencode": "^4.0.0"
   },
   "devDependencies": {
-    "@types/bencode": "^2.0.4",
+    "@types/bencode": "^4.0.0",
     "@types/node": "^24.2.1",
     "matrix-test": "file:../matrix-test",
     "superjson": "^2.2.2",
