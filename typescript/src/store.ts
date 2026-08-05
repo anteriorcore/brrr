@@ -238,7 +238,7 @@ export class Memory {
       type: "pending_returns",
       callHash,
     };
-    const handled = new Set<PendingReturn>();
+    const handled = new Set<string>();
     return this.withCas(async () => {
       const pendingEncoded = await this.store.get(memKey);
       if (!pendingEncoded) {
@@ -246,15 +246,13 @@ export class Memory {
       }
       const toHandle = new Set(
         PendingReturns.decode(pendingEncoded)
-          .encodedReturns.difference(
-            new Set(handled.values().map(TaggedTuple.encodeToString)),
-          )
+          .encodedReturns.difference(handled)
           .values()
           .map((it) => TaggedTuple.decodeFromString(PendingReturn, it)),
       );
       await f(toHandle);
       for (const it of toHandle) {
-        handled.add(it);
+        handled.add(TaggedTuple.encodeToString(it));
       }
       return this.store.compareAndDelete(memKey, pendingEncoded);
     });

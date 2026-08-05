@@ -312,10 +312,10 @@ await suite(import.meta.filename, async () => {
         // fail. We then expect the second call to only run against pendingReturn2 since it was
         // already handled the first time.
         strictEqual(unstableFn.mock.callCount(), 2);
-        deepStrictEqual(unstableFn.mock.calls[0].arguments, [
+        deepStrictEqual(unstableFn.mock.calls[0]?.arguments, [
           new Set([pendingReturn1]),
         ]);
-        deepStrictEqual(unstableFn.mock.calls[1].arguments, [
+        deepStrictEqual(unstableFn.mock.calls[1]?.arguments, [
           new Set([pendingReturn2]),
         ]);
         strictEqual(await store.get(fixture.pendingReturns.key), undefined);
