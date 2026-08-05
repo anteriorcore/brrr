@@ -246,7 +246,9 @@ export class Memory {
       }
       const toHandle = new Set(
         PendingReturns.decode(pendingEncoded)
-          .encodedReturns.difference(handled)
+          .encodedReturns.difference(
+            new Set(handled.values().map(TaggedTuple.encodeToString)),
+          )
           .values()
           .map((it) => TaggedTuple.decodeFromString(PendingReturn, it)),
       );

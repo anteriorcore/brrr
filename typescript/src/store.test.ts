@@ -253,9 +253,22 @@ await suite(import.meta.filename, async () => {
     await suite("withPendingReturnRemove", async () => {
       const mockFn =
         mock.fn<(returns: Iterable<PendingReturn>) => Promise<void>>();
+      const pendingReturn1 = new PendingReturn("a", "b", "c");
+      const pendingReturn2 = new PendingReturn("d", "e", "f");
+
+      const unstableFn = mock.fn((returns: Iterable<PendingReturn>) => {
+        const pendingReturns = new PendingReturns(undefined, [
+          pendingReturn1,
+          pendingReturn2,
+        ]);
+        if (unstableFn.mock.callCount() < 1)
+          store.set(fixture.pendingReturns.key, pendingReturns.encode());
+        return Promise.resolve();
+      });
 
       afterEach(() => {
         mockFn.mock.resetCalls();
+        unstableFn.mock.resetCalls();
       });
 
       await test("don't call f if no pending return is found", async () => {
@@ -280,6 +293,31 @@ await suite(import.meta.filename, async () => {
           },
         );
         strictEqual(mockFn.mock.callCount(), 1);
+        strictEqual(await store.get(fixture.pendingReturns.key), undefined);
+      });
+
+      await test("invokes f but store delete fails and properly dedupes pending returns", async () => {
+        const arrayOfPendingReturns = [pendingReturn1];
+        const pendingReturns = new PendingReturns(
+          undefined,
+          arrayOfPendingReturns,
+        );
+        await store.set(fixture.pendingReturns.key, pendingReturns.encode());
+        await memory.withPendingReturnsRemove(
+          fixture.pendingReturns.key.callHash,
+          unstableFn,
+        );
+        // The first time we call the mock function we use pendingReturn1 but while that happens,
+        // the store gets changed to pendingReturn1 and pendingReturn2. This causes the store to
+        // fail. We then expect the second call to only run against pendingReturn2 since it was
+        // already handled the first time.
+        strictEqual(unstableFn.mock.callCount(), 2);
+        deepStrictEqual(unstableFn.mock.calls[0].arguments, [
+          new Set([pendingReturn1]),
+        ]);
+        deepStrictEqual(unstableFn.mock.calls[1].arguments, [
+          new Set([pendingReturn2]),
+        ]);
         strictEqual(await store.get(fixture.pendingReturns.key), undefined);
       });
     });
