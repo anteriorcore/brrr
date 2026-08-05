@@ -110,17 +110,17 @@ async def _call_nested_gather(
     """
     calls = []
 
-    async def foo(app: TestContext, a: int) -> int:
-        calls.append(f"foo({a})")
+    async def times_two(app: TestContext, a: int) -> int:
+        calls.append(f"times_two({a})")
         return a * 2
 
-    async def bar(app: TestContext, a: int) -> int:
-        calls.append(f"bar({a})")
+    async def minus_one(app: TestContext, a: int) -> int:
+        calls.append(f"minus_one({a})")
         return a - 1
 
     async def not_a_brrr_task(app: TestContext, a: int) -> int:
-        b = await app.call(foo)(a)
-        return await app.call(bar)(b)
+        b = await app.call(times_two)(a)
+        return await app.call(minus_one)(b)
 
     async def top(app: TestContext, xs: list[int]) -> list[int]:
         calls.append(f"top({xs})")
@@ -129,7 +129,9 @@ async def _call_nested_gather(
         typing.assert_type(result, list[int])
         return result
 
-    handlers: dict[str, Task[TestContext, ..., Any]] = dict(foo=foo, bar=bar, top=top)
+    handlers: dict[str, Task[TestContext, ..., Any]] = dict(
+        times_two=times_two, minus_one=minus_one, top=top
+    )
     b = LocalBrrr(topic=topic, handlers=handlers, codec=DemoPickleCodec())
     await b.run(top)([3, 4])
 
@@ -139,22 +141,22 @@ async def _call_nested_gather(
 async def test_app_gather(topic: str, task_name: str) -> None:
     """
     Since brrr.gather waits for all Defers to be raised, top should Defer at most twice,
-    and both foo calls should happen before both bar calls.
+    and both times_two calls should happen before both minus_one calls.
 
     Example order of events:
     - enqueue top([3, 4])
     - run top([3, 4])
-        - attempt foo(3), Defer and enqueue
-        - attempt foo(4), Defer and enqueue
+        - attempt times_two(3), Defer and enqueue
+        - attempt times_two(4), Defer and enqueue
         - Defer and enqueue
-    - run foo(3)
-    - run foo(4)
+    - run times_two(3)
+    - run times_two(4)
     - run top([3, 4])
-        - attempt baz(3), Defer and enqueue
-        - attempt baz(4), Defer and enqueue
+        - attempt minus_one(3), Defer and enqueue
+        - attempt minus_one(4), Defer and enqueue
         - Defer and enqueue
-    - run baz(3)
-    - run baz(4)
+    - run minus_one(3)
+    - run minus_one(4)
     - run top([3, 4])
     """
     brrr_calls = await _call_nested_gather(
@@ -163,16 +165,21 @@ async def test_app_gather(topic: str, task_name: str) -> None:
     # TODO: once debouncing is fixed, this should be 3 instead of 5;
     # see test_no_debounce_parent
     assert len([c for c in brrr_calls if c.startswith("top")]) == 5
-    foo3, foo4, bar6, bar8 = (
-        brrr_calls.index("foo(3)"),
-        brrr_calls.index("foo(4)"),
-        brrr_calls.index("bar(6)"),
-        brrr_calls.index("bar(8)"),
+    (
+        times_two_3_call_index,
+        times_two_4_call_index,
+        minus_one_6_call_index,
+        minus_one_8_call_index,
+    ) = (
+        brrr_calls.index("times_two(3)"),
+        brrr_calls.index("times_two(4)"),
+        brrr_calls.index("minus_one(6)"),
+        brrr_calls.index("minus_one(8)"),
     )
-    assert foo3 < bar6
-    assert foo3 < bar8
-    assert foo4 < bar6
-    assert foo4 < bar8
+    assert times_two_3_call_index < minus_one_6_call_index
+    assert times_two_3_call_index < minus_one_8_call_index
+    assert times_two_4_call_index < minus_one_6_call_index
+    assert times_two_4_call_index < minus_one_8_call_index
 
 
 async def test_asyncio_gather(topic: str, task_name: str) -> None:
@@ -185,8 +192,8 @@ async def test_asyncio_gather(topic: str, task_name: str) -> None:
         topic=topic, task_name=task_name, use_brrr_gather=False
     )
     assert len([c for c in asyncio_calls if c.startswith("top")]) == 5
-    assert asyncio_calls.index("foo(3)") < asyncio_calls.index("bar(6)")
-    assert asyncio_calls.index("foo(4)") < asyncio_calls.index("bar(8)")
+    assert asyncio_calls.index("times_two(3)") < asyncio_calls.index("minus_one(6)")
+    assert asyncio_calls.index("times_two(4)") < asyncio_calls.index("minus_one(8)")
 
 
 async def test_exc_gather(topic: str, task_name: str) -> None:
