@@ -16,6 +16,7 @@ import {
 } from "./connection.ts";
 import {
   CloseOnEmptyQueue,
+  CloseOnSilenseQueue,
   InMemoryCache,
   InMemoryStore,
 } from "./backends/in-memory.ts";
@@ -46,6 +47,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   let cache: Cache;
   let server: Server;
   let queue: Queue;
+  let closeOn;
 
   // Test tasks
   function bar(_: TestContext, a: number) {
@@ -169,6 +171,11 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("topics separate app same connection", async () => {
+    const server = new Server(
+      store,
+      cache,
+      new CloseOnSilenseQueue([subtopics.t1, subtopics.t2]),
+    );
     const app1 = new AppWorker(codec, server, { one });
     const app2 = new AppWorker(codec, server, { two });
 
@@ -179,6 +186,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("topics separate app separate connection", async () => {
+    const queue = new CloseOnSilenseQueue([subtopics.t1, subtopics.t2]);
     const server1 = new Server(store, cache, queue);
     const server2 = new Server(store, cache, queue);
     const app1 = new AppWorker(codec, server1, { one });
@@ -191,10 +199,15 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("topics same app", async () => {
+    const server = new Server(
+      store,
+      cache,
+      new CloseOnSilenseQueue([subtopics.t1, subtopics.t2]),
+    );
     const app = new AppWorker(codec, server, { one, two });
-        await app.schedule(two, subtopics.t2)(7);
-await     server.loop(subtopics.t1, app.handle);
-await    server.loop(subtopics.t2, app.handle);
+    await app.schedule(two, subtopics.t2)(7);
+    await server.loop(subtopics.t1, app.handle);
+    await server.loop(subtopics.t2, app.handle);
   });
 
   await test("debounce child", async () => {
@@ -219,455 +232,396 @@ await    server.loop(subtopics.t2, app.handle);
     deepStrictEqual(Object.fromEntries(calls), { 0: 1, 1: 2, 2: 2, 3: 2 });
   });
 
-  // await test("no debounce parent", async () => {
-  //   const calls = new Map<string, number>();
-
-  //   function one(_ctx: TestContext, _a: number): number {
-  //     calls.set("one", (calls.get("one") || 0) + 1);
-  //     return 1;
-  //   }
-
-  //   async function foo(app: TestContext, a: number): Promise<number> {
-  //     calls.set("foo", (calls.get("foo") || 0) + 1);
-  //     const results = await app.gather(
-  //       ...new Array(a).keys().map((i) => app.call(one)(i)),
-  //     );
-  //     return results.reduce((sum, val) => sum + val);
-  //   }
-
-  //   const brrr = new LocalBrrr(topic, {
-  //     codec,
-  //     handlers: { one, foo },
-  //   });
-  //   await brrr.run(foo)(50);
-
-  //   deepStrictEqual(Object.fromEntries(calls), { one: 50, foo: 51 });
-  // });
-
-  // await test("app handler names", async () => {
-  //   function foo(_: TestContext, a: number): number {
-  //     return a * a;
-  //   }
-
-  //   async function bar(app: TestContext, a: number): Promise<number> {
-  //     return (
-  //       (await app.call(foo)(a)) *
-  //       (await app.call<[number], number>("quux/zim")(a))
-  //     );
-  //   }
-
-  //   const worker = new AppWorker(codec, server, {
-  //     "quux/zim": foo,
-  //     "quux/bar": bar,
-  //   });
-  //   const localApp = new LocalApp(topic, server, worker);
-  //   localApp.run();
-
-  //   const call = await codec.encodeCall("quux/bar", [4]);
-  //   const done = waitFor(call, async () => {
-  //     strictEqual(await localApp.read("quux/zim")(4), 16);
-  //     strictEqual(await localApp.read(foo)(4), 16);
-  //   });
-
-  //   await localApp.schedule("quux/bar")(4);
-  //   return done;
-  // });
-
-  // await suite("loop mode", async () => {
-  //   let queues: Record<string, (string | typeof BrrrShutdownSymbol)[]>;
-  //   let server: Server;
-
-  //   const publisher: Publisher = {
-  //     async emit(topic: string, callId: string | Call): Promise<void> {
-  //       queues[topic]?.push(callId as string);
-  //     },
-  //   };
-
-  //   async function flusher() {
-  //     const item = queues[topic]?.shift();
-  //     if (!item) {
-  //       return BrrrShutdownSymbol;
-  //     }
-  //     return item;
-  //   }
-
-  //   beforeEach(() => {
-  //     queues = {
-  //       [topic]: [],
-  //     };
-  //     server = new Server(store, cache, publisher);
-  //   });
-
-  //   await test("basic loop", async () => {
-  //     async function foo(app: TestContext, a: number) {
-  //       return (await app.call(bar, topic)(a + 1)) + 1;
-  //     }
-
-  //     const server = new Server(store, cache, publisher);
-  //     const app = new AppWorker(codec, server, { ...handlers, foo });
-
-  //     await app.schedule(foo, topic)(122);
-
-  //     await server.loop(topic, app.handle, flusher);
-
-  //     strictEqual(await app.read(foo)(122), 457);
-  //   });
-
-  //   await test("loop with no tasks", async () => {
-  //     const app = new AppWorker(codec, server, handlers);
-
-  //     let looped = false;
-  //     await server.loop(topic, app.handle, async () => {
-  //       if (looped) {
-  //         return BrrrShutdownSymbol;
-  //       }
-  //       looped = true;
-  //       return undefined;
-  //     });
-
-  //     ok(looped);
-  //   });
-
-  //   await test("resumable loop", async () => {
-  //     class MyError extends Error {}
-
-  //     let errors = 5;
-
-  //     async function foo(_: TestContext, a: number): Promise<number> {
-  //       if (errors) {
-  //         errors--;
-  //         throw new MyError();
-  //       }
-  //       queues[topic]?.push(BrrrShutdownSymbol);
-  //       return a;
-  //     }
-
-  //     const app = new AppWorker(codec, server, {
-  //       ...handlers,
-  //       foo,
-  //     });
-
-  //     while (true) {
-  //       try {
-  //         await app.schedule(foo, topic)(3);
-  //         await server.loop(topic, app.handle, async () => {
-  //           return queues[topic]?.pop();
-  //         });
-  //         break;
-  //       } catch (err) {
-  //         if (err instanceof MyError) {
-  //           continue;
-  //         }
-  //         throw err;
-  //       }
-  //     }
-  //     strictEqual(errors, 0);
-  //   });
-
-  //   await test("resumable loop nested", async () => {
-  //     class MyError extends Error {}
-
-  //     let errors = 5;
-
-  //     function bar(_: TestContext, a: number): number {
-  //       if (errors) {
-  //         errors--;
-  //         throw new MyError();
-  //       }
-  //       return a;
-  //     }
-
-  //     async function foo(app: TestContext, a: number): Promise<number> {
-  //       return app.call(bar)(a);
-  //     }
-
-  //     const app = new AppWorker(codec, server, {
-  //       ...handlers,
-  //       foo,
-  //       bar,
-  //     });
-
-  //     while (true) {
-  //       try {
-  //         await app.schedule(foo, topic)(3);
-  //         await server.loop(topic, app.handle, flusher);
-  //         break;
-  //       } catch (err) {
-  //         if (err instanceof MyError) {
-  //           continue;
-  //         }
-  //         throw err;
-  //       }
-  //     }
-  //     strictEqual(errors, 0);
-  //   });
-
-  //   await test("stress parallel", async () => {
-  //     async function fib(app: TestContext, n: bigint): Promise<bigint> {
-  //       if (n < 2) {
-  //         return n;
-  //       }
-  //       const [a, b] = await app.gather(
-  //         app.call(fib)(n - 1n),
-  //         app.call(fib)(n - 2n),
-  //       );
-  //       return a + b;
-  //     }
-
-  //     async function top(app: TestContext): Promise<void> {
-  //       const n = await app.call(fib)(1000n);
-  //       deepStrictEqual(
-  //         n,
-  //         43466557686937456435688527675040625802564660517371780402481729089536555417949051890403879840079255169295922593080322634775209689623239873322471161642996440906533187938298969649928516003704476137795166849228875n,
-  //       );
-  //     }
-
-  //     const codec = new DemoJsonCodec({ stringify, parse });
-  //     const app = new AppWorker(codec, server, { fib, top });
-  //     await app.schedule(top, topic)();
-
-  //     await Promise.all(
-  //       new Array(10).keys().map(() => server.loop(topic, app.handle, flusher)),
-  //     );
-  //   });
-
-  //   await test("app subclass", async () => {
-  //     function bar(_: TestContext, a: number): number {
-  //       return a + 1;
-  //     }
-
-  //     function baz(_: TestContext, a: number) {
-  //       return a + 10;
-  //     }
-
-  //     async function foo(app: TestContext, a: number): Promise<number> {
-  //       return app.call(bar)(a);
-  //     }
-
-  //     class MyAppWorker extends AppWorker<TestContext> {
-  //       public readonly myHandle = async (
-  //         request: Request,
-  //         connection: Connection,
-  //       ): Promise<Response | Defer> => {
-  //         const response = await this.handle(request, connection);
-  //         if (response instanceof Defer) {
-  //           for (const deferredCall of response.calls) {
-  //             Object.defineProperty(deferredCall.call, "taskName", {
-  //               value: "baz",
-  //             });
-  //           }
-  //           return new Defer(...response.calls);
-  //         }
-  //         return response;
-  //       };
-  //     }
-
-  //     const app = new MyAppWorker(codec, server, { foo, bar, baz });
-  //     await app.schedule(foo, topic)(4);
-  //     await server.loop(topic, app.myHandle, flusher);
-  //     strictEqual(await app.read(foo)(4), 14);
-  //   });
-
-  //   await suite("spawn limit", async () => {
-  //     await test("spawn limit depth", async () => {
-  //       let n = 0;
-
-  //       async function foo(app: TestContext, a: number): Promise<number> {
-  //         n++;
-  //         if (a === 0) {
-  //           return 0;
-  //         }
-  //         return app.call(foo)(a - 1);
-  //       }
-
-  //       const server = new Server(store, cache, publisher);
-  //       // override for test
-  //       Object.defineProperty(server, "spawnLimit", {
-  //         value: 100,
-  //       });
-
-  //       const app = new AppWorker(codec, server, { foo });
-  //       await app.schedule(foo, topic)(server.spawnLimit + 3);
-
-  //       await rejects(server.loop(topic, app.handle, flusher));
-  //       strictEqual(n, server.spawnLimit);
-  //     });
-
-  //     await test("spawn limit recoverable", async () => {
-  //       function one(_ctx: TestContext, _a: number): number {
-  //         return 1;
-  //       }
-
-  //       async function foo(app: TestContext, a: number): Promise<number> {
-  //         const results = await app.gather(
-  //           ...new Array(a).keys().map((i) => app.call(one)(i)),
-  //         );
-  //         return results.reduce((sum, val) => sum + val);
-  //       }
-
-  //       const server = new Server(store, cache, publisher);
-  //       // override for test
-  //       Object.defineProperty(server, "spawnLimit", {
-  //         value: 100,
-  //       });
-  //       const n = server.spawnLimit + 1;
-  //       let spawnLimitEncountered = false;
-  //       const app = new AppWorker(codec, server, { one, foo });
-  //       while (true) {
-  //         // reset cache
-  //         Object.defineProperty(cache, "cache", {
-  //           value: new Map(),
-  //         });
-  //         try {
-  //           await app.schedule(foo, topic)(n);
-  //           await server.loop(topic, app.handle, flusher);
-  //           break;
-  //         } catch (err) {
-  //           if (err instanceof SpawnLimitError) {
-  //             spawnLimitEncountered = true;
-  //             continue;
-  //           }
-  //           throw err;
-  //         }
-  //       }
-  //       ok(spawnLimitEncountered);
-  //       strictEqual(await app.read(foo)(n), n);
-  //     });
-
-  //     await test("spawn limit breadth mapped", async () => {
-  //       const calls = new Map<string, number>();
-
-  //       function one(_ctx: TestContext, _a: number): number {
-  //         calls.set("one", (calls.get("one") || 0) + 1);
-  //         return 1;
-  //       }
-
-  //       async function foo(app: TestContext, a: number): Promise<number> {
-  //         calls.set("foo", (calls.get("foo") || 0) + 1);
-  //         const results = await app.gather(
-  //           ...new Array(a).keys().map((i) => app.call(one)(i)),
-  //         );
-  //         return results.reduce((sum, val) => sum + val);
-  //       }
-
-  //       const app = new AppWorker(codec, server, { one, foo });
-  //       await app.schedule(foo, topic)(server.spawnLimit + 4);
-
-  //       await rejects(server.loop(topic, app.handle, flusher), SpawnLimitError);
-  //       strictEqual(calls.get(foo.name), 1);
-  //     });
-
-  //     await test("spawn limit breadth manual", async () => {
-  //       const calls = new Map<string, number>();
-
-  //       function one(_ctx: TestContext, _a: number): number {
-  //         calls.set("one", (calls.get("one") || 0) + 1);
-  //         return 1;
-  //       }
-
-  //       async function foo(app: TestContext, a: number): Promise<number> {
-  //         calls.set("foo", (calls.get("foo") || 0) + 1);
-  //         let total = 0;
-  //         for (let i = 0; i < a; i++) {
-  //           total += await app.call(one)(i);
-  //         }
-  //         return total;
-  //       }
-
-  //       // override for test
-  //       const server = new Server(store, cache, publisher);
-  //       Object.defineProperty(server, "spawnLimit", {
-  //         value: 100,
-  //       });
-
-  //       const app = new AppWorker(codec, server, { foo, one });
-  //       await app.schedule(foo, topic)(server.spawnLimit + 3);
-
-  //       await rejects(server.loop(topic, app.handle, flusher));
-  //       deepStrictEqual(Object.fromEntries(calls), {
-  //         one: server.spawnLimit / 2,
-  //         foo: server.spawnLimit / 2,
-  //       });
-  //     });
-
-  //     await test("spawn limit cached", async () => {
-  //       let n = 0;
-  //       let final = undefined;
-
-  //       function same(_: TestContext, a: number): number {
-  //         n++;
-  //         return a;
-  //       }
-
-  //       async function foo(app: TestContext, a: number): Promise<number> {
-  //         const results = await app.gather(
-  //           ...new Array(a).fill(1).map((i) => app.call(same)(i)),
-  //         );
-  //         const val = results.reduce((sum, val) => sum + val);
-  //         final = val;
-  //         return val;
-  //       }
-
-  //       const server = new Server(store, cache, publisher);
-  //       Object.defineProperty(server, "spawnLimit", {
-  //         value: 100,
-  //       });
-
-  //       const app = new AppWorker(codec, server, { foo, same });
-  //       await app.schedule(foo, topic)(server.spawnLimit + 5);
-
-  //       await server.loop(topic, app.handle, flusher);
-  //       strictEqual(n, 1);
-  //       strictEqual(final, server.spawnLimit + 5);
-  //     });
-  //   });
-
-  //   await test("custom context", async () => {
-  //     // Inject task name as a custom context.
-
-  //     class MyCodec implements Codec<string> {
-  //       public async decodeReturn(
-  //         _: string,
-  //         payload: Uint8Array,
-  //       ): Promise<unknown> {
-  //         return decoder.decode(payload);
-  //       }
-
-  //       public async encodeCall<A extends unknown[]>(
-  //         taskName: string,
-  //         _args: A,
-  //       ): Promise<Call> {
-  //         return { taskName, payload: new Uint8Array(), callHash: taskName };
-  //       }
-
-  //       public async invokeTask<A extends unknown[], R>(
-  //         call: Call,
-  //         handler: Task<string, A, R>,
-  //         _activeWorker: ActiveWorker<string>,
-  //       ): Promise<Uint8Array> {
-  //         // @ts-expect-error type cheat for test.
-  //         const result: string = await handler(call.taskName);
-  //         return encoder.encode(result);
-  //       }
-  //     }
-
-  //     function foo(ctx: string) {
-  //       return ctx;
-  //     }
-
-  //     function bar(ctx: string) {
-  //       return ctx;
-  //     }
-
-  //     const codec = new MyCodec();
-  //     const server = new Server(store, cache, publisher);
-  //     const app = new AppWorker(codec, server, { foo, bar });
-
-  //     await app.schedule(foo, topic)();
-  //     await app.schedule(bar, topic)();
-  //     await server.loop(topic, app.handle, flusher);
-  //     strictEqual(await app.read(foo)(), "foo");
-  //     strictEqual(await app.read(bar)(), "bar");
-  //   });
-  // });
+  await test("no debounce parent", async () => {
+    const calls = new Map<string, number>();
+
+    function one(_ctx: TestContext, _a: number): number {
+      calls.set("one", (calls.get("one") || 0) + 1);
+      return 1;
+    }
+
+    async function foo(app: TestContext, a: number): Promise<number> {
+      calls.set("foo", (calls.get("foo") || 0) + 1);
+      const results = await app.gather(
+        ...new Array(a).keys().map((i) => app.call(one)(i)),
+      );
+      return results.reduce((sum, val) => sum + val);
+    }
+
+    const brrr = new LocalBrrr(topic, {
+      codec,
+      handlers: { one, foo },
+    });
+    await brrr.run(foo)(50);
+
+    deepStrictEqual(Object.fromEntries(calls), { one: 50, foo: 51 });
+  });
+
+  await test("app handler names", async () => {
+    function foo(_: TestContext, a: number): number {
+      return a * a;
+    }
+
+    async function bar(app: TestContext, a: number): Promise<number> {
+      return (
+        (await app.call(foo)(a)) *
+        (await app.call<[number], number>("quux/zim")(a))
+      );
+    }
+
+    const worker = new AppWorker(codec, server, {
+      "quux/zim": foo,
+      "quux/bar": bar,
+    });
+    const localApp = new LocalApp(topic, server, worker);
+
+    await localApp.schedule("quux/bar")(4);
+    await localApp.run()
+
+    strictEqual(await localApp.read("quux/zim")(4), 16);
+    strictEqual(await localApp.read(foo)(4), 16);
+  });
+
+  await suite("loop mode", async () => {
+
+    await test("resumable loop", async () => {
+      class MyError extends Error {}
+
+      let errors = 5;
+
+      async function foo(_: TestContext, a: number): Promise<number> {
+        if (errors) {
+          errors--;
+          throw new MyError();
+        }
+        return a;
+      }
+
+      const app = new AppWorker(codec, server, {
+        ...handlers,
+        foo,
+      });
+
+      while (true) {
+        try {
+          await app.schedule(foo, topic)(3);
+          await server.loop(topic, app.handle);
+          break;
+        } catch (err) {
+          if (err instanceof MyError) {
+            continue;
+          }
+          throw err;
+        }
+      }
+      strictEqual(errors, 0);
+    });
+
+    await test("resumable loop nested", async () => {
+      class MyError extends Error {}
+
+      let errors = 5;
+
+      function bar(_: TestContext, a: number): number {
+        if (errors) {
+          errors--;
+          throw new MyError();
+        }
+        return a;
+      }
+
+      async function foo(app: TestContext, a: number): Promise<number> {
+        return app.call(bar)(a);
+      }
+
+      const app = new AppWorker(codec, server, {
+        ...handlers,
+        foo,
+        bar,
+      });
+
+      while (true) {
+        try {
+          await app.schedule(foo, topic)(3);
+          await server.loop(topic, app.handle);
+          break;
+        } catch (err) {
+          if (err instanceof MyError) {
+            continue;
+          }
+          throw err;
+        }
+      }
+      strictEqual(errors, 0);
+    });
+
+    await test("stress parallel", async () => {
+
+      async function fib(app: TestContext, n: bigint): Promise<bigint> {
+        if (n < 2) {
+          return n;
+        }
+        const [a, b] = await app.gather(
+          app.call(fib)(n - 1n),
+          app.call(fib)(n - 2n),
+        );
+        return a + b;
+      }
+
+      async function top(app: TestContext): Promise<void> {
+        const n = await app.call(fib)(1000n);
+        deepStrictEqual(
+          n,
+          43466557686937456435688527675040625802564660517371780402481729089536555417949051890403879840079255169295922593080322634775209689623239873322471161642996440906533187938298969649928516003704476137795166849228875n,
+        );
+      }
+
+      const codec = new DemoJsonCodec({ stringify, parse });
+      const app = new AppWorker(codec, server, { fib, top });
+      await app.schedule(top, topic)();
+
+      await Promise.all(
+        new Array(10).keys().map(() => server.loop(topic, app.handle)),
+      );
+    });
+
+    await test("app subclass", async () => {
+      function bar(_: TestContext, a: number): number {
+        return a + 1;
+      }
+
+      function baz(_: TestContext, a: number) {
+        return a + 10;
+      }
+
+      async function foo(app: TestContext, a: number): Promise<number> {
+        return app.call(bar)(a);
+      }
+
+      class MyAppWorker extends AppWorker<TestContext> {
+        public readonly myHandle = async (
+          request: Request,
+          connection: Connection,
+        ): Promise<Response | Defer> => {
+          const response = await this.handle(request, connection);
+          if (response instanceof Defer) {
+            for (const deferredCall of response.calls) {
+              Object.defineProperty(deferredCall.call, "taskName", {
+                value: "baz",
+              });
+            }
+            return new Defer(...response.calls);
+          }
+          return response;
+        };
+      }
+
+      const app = new MyAppWorker(codec, server, { foo, bar, baz });
+      await app.schedule(foo, topic)(4);
+      await server.loop(topic, app.myHandle);
+      strictEqual(await app.read(foo)(4), 14);
+    });
+
+    await suite("spawn limit", async () => {
+      await test("spawn limit depth", async () => {
+        let n = 0;
+
+        async function foo(app: TestContext, a: number): Promise<number> {
+          n++;
+          if (a === 0) {
+            return 0;
+          }
+          return app.call(foo)(a - 1);
+        }
+
+        const server = new Server(store, cache, queue);
+        // override for test
+        Object.defineProperty(server, "spawnLimit", {
+          value: 100,
+        });
+
+        const app = new AppWorker(codec, server, { foo });
+        await app.schedule(foo, topic)(server.spawnLimit + 3);
+
+        await rejects(server.loop(topic, app.handle));
+        strictEqual(n, server.spawnLimit);
+      });
+
+      await test("spawn limit recoverable", async () => {
+        function one(_ctx: TestContext, _a: number): number {
+          return 1;
+        }
+
+        async function foo(app: TestContext, a: number): Promise<number> {
+          const results = await app.gather(
+            ...new Array(a).keys().map((i) => app.call(one)(i)),
+          );
+          return results.reduce((sum, val) => sum + val);
+        }
+
+        const server = new Server(store, cache, queue);
+        // override for test
+        Object.defineProperty(server, "spawnLimit", {
+          value: 100,
+        });
+        const n = server.spawnLimit + 1;
+        let spawnLimitEncountered = false;
+        const app = new AppWorker(codec, server, { one, foo });
+        while (true) {
+          // reset cache
+          Object.defineProperty(cache, "cache", {
+            value: new Map(),
+          });
+          try {
+            await app.schedule(foo, topic)(n);
+            await server.loop(topic, app.handle);
+            break;
+          } catch (err) {
+            if (err instanceof SpawnLimitError) {
+              spawnLimitEncountered = true;
+              continue;
+            }
+            throw err;
+          }
+        }
+        ok(spawnLimitEncountered);
+        strictEqual(await app.read(foo)(n), n);
+      });
+
+      await test("spawn limit breadth mapped", async () => {
+        const calls = new Map<string, number>();
+
+        function one(_ctx: TestContext, _a: number): number {
+          calls.set("one", (calls.get("one") || 0) + 1);
+          return 1;
+        }
+
+        async function foo(app: TestContext, a: number): Promise<number> {
+          calls.set("foo", (calls.get("foo") || 0) + 1);
+          const results = await app.gather(
+            ...new Array(a).keys().map((i) => app.call(one)(i)),
+          );
+          return results.reduce((sum, val) => sum + val);
+        }
+
+        const app = new AppWorker(codec, server, { one, foo });
+        await app.schedule(foo, topic)(server.spawnLimit + 4);
+
+        await rejects(server.loop(topic, app.handle), SpawnLimitError);
+        strictEqual(calls.get(foo.name), 1);
+      });
+
+      await test("spawn limit breadth manual", async () => {
+        const calls = new Map<string, number>();
+
+        function one(_ctx: TestContext, _a: number): number {
+          calls.set("one", (calls.get("one") || 0) + 1);
+          return 1;
+        }
+
+        async function foo(app: TestContext, a: number): Promise<number> {
+          calls.set("foo", (calls.get("foo") || 0) + 1);
+          let total = 0;
+          for (let i = 0; i < a; i++) {
+            total += await app.call(one)(i);
+          }
+          return total;
+        }
+
+        // override for test
+        const server = new Server(store, cache, queue);
+        Object.defineProperty(server, "spawnLimit", {
+          value: 100,
+        });
+
+        const app = new AppWorker(codec, server, { foo, one });
+        await app.schedule(foo, topic)(server.spawnLimit + 3);
+
+        await rejects(server.loop(topic, app.handle));
+        deepStrictEqual(Object.fromEntries(calls), {
+          one: server.spawnLimit / 2,
+          foo: server.spawnLimit / 2,
+        });
+      });
+
+      await test("spawn limit cached", async () => {
+        let n = 0;
+        let final = undefined;
+
+        function same(_: TestContext, a: number): number {
+          n++;
+          return a;
+        }
+
+        async function foo(app: TestContext, a: number): Promise<number> {
+          const results = await app.gather(
+            ...new Array(a).fill(1).map((i) => app.call(same)(i)),
+          );
+          const val = results.reduce((sum, val) => sum + val);
+          final = val;
+          return val;
+        }
+
+        const server = new Server(store, cache, queue);
+        Object.defineProperty(server, "spawnLimit", {
+          value: 100,
+        });
+
+        const app = new AppWorker(codec, server, { foo, same });
+        await app.schedule(foo, topic)(server.spawnLimit + 5);
+
+        await server.loop(topic, app.handle);
+        strictEqual(n, 1);
+        strictEqual(final, server.spawnLimit + 5);
+      });
+    });
+
+    await test("custom context", async () => {
+      // Inject task name as a custom context.
+
+      class MyCodec implements Codec<string> {
+        public async decodeReturn(
+          _: string,
+          payload: Uint8Array,
+        ): Promise<unknown> {
+          return decoder.decode(payload);
+        }
+
+        public async encodeCall<A extends unknown[]>(
+          taskName: string,
+          _args: A,
+        ): Promise<Call> {
+          return { taskName, payload: new Uint8Array(), callHash: taskName };
+        }
+
+        public async invokeTask<A extends unknown[], R>(
+          call: Call,
+          handler: Task<string, A, R>,
+          _activeWorker: ActiveWorker<string>,
+        ): Promise<Uint8Array> {
+          // @ts-expect-error type cheat for test.
+          const result: string = await handler(call.taskName);
+          return encoder.encode(result);
+        }
+      }
+
+      function foo(ctx: string) {
+        return ctx;
+      }
+
+      function bar(ctx: string) {
+        return ctx;
+      }
+
+      const codec = new MyCodec();
+      const server = new Server(store, cache, queue);
+      const app = new AppWorker(codec, server, { foo, bar });
+
+      await app.schedule(foo, topic)();
+      await app.schedule(bar, topic)();
+      await server.loop(topic, app.handle);
+      strictEqual(await app.read(foo)(), "foo");
+      strictEqual(await app.read(bar)(), "bar");
+    });
+  });
 });

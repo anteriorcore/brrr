@@ -140,25 +140,58 @@ export class CloseOnEmptyQueue implements Queue {
     }
     const queue = this.getQueue(topic);
     const body = await queue.get();
-    // NOMERGE task_done
     return { closed: false, message: { body } };
   }
 
-  private getQueue(topic: string) {
+  protected getQueue(topic: string) {
     const queue = this.queues.get(topic);
     if (!queue) {
-      throw new Error("NO SUCH QUEUE");
+      throw new Error("Queue not found");
     }
     return queue;
   }
 
-  private isEmpty() {
+  isEmpty() {
     return this.queues.values().every((queue) => queue.isEmpty());
   }
 
-  private close() {
+  close() {
     for (const [_, queue] of this.queues) {
       queue.close();
     }
+  }
+}
+
+export class CloseOnSilenseQueue extends CloseOnEmptyQueue implements Queue {
+  watchdog: NodeJS.Timeout | undefined;
+
+  private createWatchdog() {
+    return setTimeout(() => this.close(), 1000);
+  }
+
+  private kickWatchdog() {
+    this.watchdog ??= this.createWatchdog();
+    this.watchdog.refresh();
+  }
+
+  override async putMessage(topic: string, body: string): Promise<void> {
+    this.kickWatchdog();
+    this.getQueue(topic).push(body);
+  }
+
+  override async getMessage(topic: string): Promise<GetMessageReponse> {
+    this.watchdog ??= this.createWatchdog();
+    try {
+      const body = await this.getQueue(topic).get();
+      return { closed: false, message: { body } };
+    } catch {
+      return { closed: true };
+    }
+  }
+
+  override close() {
+    clearTimeout(this.watchdog);
+    this.watchdog = undefined;
+    super.close();
   }
 }
