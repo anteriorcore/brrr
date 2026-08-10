@@ -148,7 +148,7 @@ class Connection:
 
     async def schedule_raw(
         self, topic: str, idempotency_key: str, task_name: str, payload: bytes
-    ) -> None:
+    ) -> str | None:
         """Schedule this call on the brrr workforce.
 
         This method should be called for top-level workflow calls only.
@@ -158,7 +158,7 @@ class Connection:
         # in fact be a good test to disable this and verify all unit tests still
         # pass (discrepancies in task call counts notwithstanding).
         if await self._memory.has_value(idempotency_key):
-            return
+            return None
         call = Call(task_name=task_name, payload=payload, call_hash=idempotency_key)
         await self._memory.set_call(call)
         # Random root id for every call so we can disambiguate retries
@@ -168,6 +168,7 @@ class Connection:
             root_id=root_id,
         )
         await self._put_job(topic, job)
+        return job.root_id
 
     async def read_raw(self, call_hash: str) -> bytes | None:
         """
@@ -177,6 +178,9 @@ class Connection:
             return await self._memory.get_value(call_hash)
         except NotFoundError:
             return None
+
+    async def cancel_task_tree(self, root_id: str) -> None:
+        await self._memory.add_dead_root(root_id)
 
 
 # Separate classes for now, might not need to be, although it does leave open
@@ -250,6 +254,10 @@ class Server(Connection):
 
     async def _handle_msg(self, handler: Handler, my_topic: str, payload: str) -> None:
         msg = ScheduleMessage.decode(payload.encode("utf-8"))
+
+        if await self._memory.is_dead_root(msg.root_id):
+            return
+
         call = await self._memory.get_call(msg.call_hash)
 
         logger.debug(

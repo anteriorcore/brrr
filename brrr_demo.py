@@ -178,6 +178,14 @@ async def get_task_result(request: web.BaseRequest):
     return response(200, dict(status="ok", result=result))
 
 
+@routes.delete("/roots/{root_id}")
+async def cancel_task(request: web.BaseRequest):
+    root_id = request.match_info["root_id"]
+    app: AppWorker = brrr_app.get()
+    app._connection.cancel_task_tree(root_id)
+    return response(202, dict(status="accepted"))
+
+
 @routes.post("/{task_name}")
 async def schedule_task(request: web.BaseRequest):
     kwargs = dict(request.query)
@@ -186,8 +194,8 @@ async def schedule_task(request: web.BaseRequest):
     if task_name not in brrr_app.get()._registry.handlers:
         return response(404, {"error": "No such task"})
 
-    await brrr_app.get().schedule(task_name, topic=topic_py)(**kwargs)
-    return response(202, {"status": "accepted"})
+    root_id = await brrr_app.get().schedule(task_name, topic=topic_py)(**kwargs)
+    return response(202, {"status": "accepted", "root_id": root_id})
 
 
 ### Demo CLI

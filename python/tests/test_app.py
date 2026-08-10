@@ -670,3 +670,41 @@ async def test_app_root_id(topic: str) -> None:
         await conn.loop(topic, app.handle)
         # Ensure that it exists at all
         assert await app.read(foo)()
+
+
+async def test_cancel_task(topic: str, task_name: str) -> None:
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue([topic])
+
+    name_foo_and_bar, name_foo, name_bar = names(
+        task_name, ("foo_and_bar", "foo", "bar")
+    )
+    calls = []
+
+    async def foo_and_bar(app: TestContext, a: int) -> int:
+        # intentionally sequential rather than gather for simplicity
+        calls.append(f"foo_and_bar({a})")
+        return await app.call(foo)(a) + await app.call(bar)(a)
+
+    async def foo(app: TestContext, a: int) -> int:
+        calls.append(f"foo({a})")
+        return len(str(a))
+
+    async def bar(app: TestContext, a: int) -> int:
+        calls.append(f"bar({a})")
+        return a * a
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={name_foo_and_bar: foo_and_bar, name_foo: foo, name_bar: bar},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        root_id = await app.schedule(foo_and_bar, topic=topic)(3)
+        assert root_id is not None
+        await conn.cancel_task_tree(root_id)
+        await conn.loop(topic, app.handle)
+
+        with pytest.raises(NotFoundError):
+            await app.read(foo_and_bar)(3)
+        assert calls == []

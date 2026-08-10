@@ -77,9 +77,9 @@ class PendingReturns:
 
 @dataclass
 class MemKey:
-    type: Literal["pending_returns", "call", "value"]
+    type: Literal["pending_returns", "call", "value", "root"]
     # Hashes only contain printable us-ascii characters
-    call_hash: str
+    hash: str
 
 
 class CompareMismatch(Exception): ...
@@ -227,7 +227,7 @@ class Memory:
                 b"payload": call.payload,
             }
         )
-        await self.store.set(MemKey(type="call", call_hash=call.call_hash), enc)
+        await self.store.set(MemKey(type="call", hash=call.call_hash), enc)
 
     async def has_value(self, call_hash: str) -> bool:
         """Inherently racy check for existence of a value.
@@ -368,3 +368,13 @@ class Memory:
             await self.store.compare_and_delete(memkey, pending_enc)
 
         return await self._with_cas(cas_body)
+
+    async def is_dead_root(self, root_id: str) -> bool:
+        """Returns True if the given root is dead.
+
+        We consider a root "dead" if any task within the tree has an uncaught
+        exception or if a client has canceled it."""
+        return await self.store.has(MemKey("root", root_id))
+
+    async def add_dead_root(self, root_id: str) -> None:
+        return await self.store.set(MemKey("root", root_id), b"")
