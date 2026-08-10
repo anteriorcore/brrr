@@ -148,21 +148,28 @@ async def test_app_gather(topic: str, task_name: str) -> None:
     - run top([3, 4])
         - attempt times_two(3), Defer and enqueue
         - attempt times_two(4), Defer and enqueue
-        - Defer and enqueue
-    - run times_two(3)
-    - run times_two(4)
+    - run times_two(3) -> 6
+    - enqueue top([3, 4])
+    - run times_two(4) -> 8
+    - enqueue top([3, 4])
     - run top([3, 4])
-        - attempt minus_one(3), Defer and enqueue
-        - attempt minus_one(4), Defer and enqueue
-        - Defer and enqueue
-    - run minus_one(3)
-    - run minus_one(4)
+        - attempt minus_one(6), Defer and enqueue
+        - attempt minus_one(8), Defer and enqueue
     - run top([3, 4])
+        - attempt minus_one(6), Debounced
+        - attempt minus_one(8), Debounced
+    - run minus_one(6) -> 5
+    - enqueue top([3, 4])
+    - run minus_one(8) -> 7
+    - enqueue top([3, 4])
+    - run top([3, 4]) -> [5, 7]
+    - run top([3, 4]) (cached)
     """
     brrr_calls = await _call_nested_gather(
         topic=topic, task_name=task_name, use_brrr_gather=True
     )
-    # TODO: once debouncing is fixed, this should be 3 instead of 4;
+    # TODO(ENG-6177): once debouncing is fixed, this should be 3 instead of 4;
+    # This is always 4 due to the test only running on a single thread
     assert len([c for c in brrr_calls if c.startswith("top")]) == 4
     (
         times_two_3_call_index,
