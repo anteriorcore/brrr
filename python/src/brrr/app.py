@@ -17,7 +17,6 @@ from .codec import Codec
 from .connection import Abandon, Connection, Defer, DeferredCall, Request, Response
 
 type Task[C, **P, R] = Callable[Concatenate[C, P], Awaitable[R]]
-
 RootId = NewType("RootId", str)
 
 
@@ -59,7 +58,10 @@ class AppConsumer[C]:
         handlers: Mapping[str, Task[C, ..., Any]] | None = None,
     ):
         self._connection = connection
-        self._registry = Registry(codec, TaskCollection(handlers or {}))
+        self._registry = Registry(
+            codec,
+            TaskCollection(handlers or {}),
+        )
 
     @overload
     def schedule[**P, R](
@@ -100,10 +102,20 @@ class AppConsumer[C]:
 
         return f
 
+    async def set_signal(self, root_id: str, signal: bytes) -> None:
+        """Set a signal for this root_id.
+
+        The signal is raw bytes and will be interpreted by the codec."""
+        await self._connection.set_signal(root_id, signal)
+
+    async def clear_signal(self, root_id: str) -> None:
+        """Clear the signal for this root_id."""
+        await self._connection.clear_signal(root_id)
+
 
 class AppWorker[C](AppConsumer[C]):
     async def handle(
-        self, request: Request, conn: Connection
+        self, request: Request, conn: Connection, signal: bytes
     ) -> Response | Defer | Abandon:
         """Glue between this class and the underlying Connection.loop handler"""
         task_name = request.call.task_name
@@ -113,6 +125,7 @@ class AppWorker[C](AppConsumer[C]):
                 request.call,
                 handler,
                 ActiveWorker(conn, self._registry, RootId(request.root_id)),
+                signal,
             )
         except (Defer, Abandon) as e:
             return e
@@ -214,6 +227,7 @@ class ActiveWorker[C]:
         Takes a number of task lambdas and calls each of them.
         If they've all been computed, return their values,
         Otherwise raise jobs for those that haven't been computed
+        or if each child should be abandoned.
         """
         return await _gather(task_awaitables)
 

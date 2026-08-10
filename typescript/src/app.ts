@@ -82,11 +82,19 @@ export class AppConsumer<C> {
       if (!payload) {
         throw new NotFoundError({
           type: "value",
-          callHash: call.callHash,
+          id: call.callHash,
         });
       }
       return this.registry.codec.decodeReturn(taskName, payload) as R;
     };
+  }
+
+  public async setSignal(rootId: string, signal: Uint8Array): Promise<void> {
+    await this.connection.setSignal(rootId, signal);
+  }
+
+  public async clearSignal(rootId: string): Promise<void> {
+    await this.connection.clearSignal(rootId);
   }
 }
 
@@ -94,6 +102,7 @@ export class AppWorker<C> extends AppConsumer<C> {
   public readonly handle = async (
     request: Request,
     connection: Connection,
+    signal: Uint8Array,
   ): Promise<Response | Defer | Abandon> => {
     const handler = this.registry.handlers[request.call.taskName];
     if (!handler) {
@@ -104,6 +113,7 @@ export class AppWorker<C> extends AppConsumer<C> {
         request.call,
         handler,
         new ActiveWorker(connection, this.registry),
+        signal,
       );
       return { payload };
     } catch (err) {

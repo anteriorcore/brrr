@@ -11,7 +11,7 @@ abstract class BrrrError extends Error {
 
 export class NotFoundError extends BrrrError {
   public constructor(key: MemKey) {
-    super(`Not found: ${key.type}/${key.callHash}`);
+    super(`Not found: ${key.type}/${key.id}`);
   }
 }
 

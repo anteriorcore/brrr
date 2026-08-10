@@ -77,9 +77,9 @@ class PendingReturns:
 
 @dataclass
 class MemKey:
-    type: Literal["pending_returns", "call", "value"]
-    # Hashes only contain printable us-ascii characters
-    call_hash: str
+    type: Literal["pending_returns", "call", "value", "signal"]
+    # Ids should only contain printable us-ascii characters
+    id: str
 
 
 class CompareMismatch(Exception): ...
@@ -227,7 +227,7 @@ class Memory:
                 b"payload": call.payload,
             }
         )
-        await self.store.set(MemKey(type="call", call_hash=call.call_hash), enc)
+        await self.store.set(MemKey(type="call", id=call.call_hash), enc)
 
     async def has_value(self, call_hash: str) -> bool:
         """Inherently racy check for existence of a value.
@@ -368,3 +368,16 @@ class Memory:
             await self.store.compare_and_delete(memkey, pending_enc)
 
         return await self._with_cas(cas_body)
+
+    async def get_signal(self, root_id: str) -> bytes:
+        """Get any signal data for this root id."""
+        try:
+            return await self.store.get(MemKey("signal", root_id))
+        except NotFoundError:
+            return b""
+
+    async def set_signal(self, root_id: str, signal: bytes) -> None:
+        return await self.store.set(MemKey("signal", root_id), signal)
+
+    async def clear_signal(self, root_id: str) -> None:
+        await self.store.delete(MemKey("signal", root_id))

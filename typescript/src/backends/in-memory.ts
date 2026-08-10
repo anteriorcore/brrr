@@ -68,7 +68,7 @@ export class InMemoryStore implements Store {
   }
 
   private keyToString(key: MemKey): string {
-    return `${key.type}/${key.callHash}`;
+    return `${key.type}/${key.id}`;
   }
 
   private isEqualBytes(a: Uint8Array, b: Uint8Array): boolean {

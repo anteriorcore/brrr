@@ -80,7 +80,9 @@ class Response:
     payload: bytes
 
 
-type Handler = Callable[[Request, Connection], Awaitable[Response | Defer | Abandon]]
+type Handler = Callable[
+    [Request, Connection, bytes], Awaitable[Response | Defer | Abandon]
+]
 
 
 @asynccontextmanager
@@ -192,6 +194,15 @@ class Connection:
         except NotFoundError:
             return None
 
+    async def set_signal(self, root_id: str, signal: bytes) -> None:
+        await self._memory.set_signal(root_id, signal)
+
+    async def clear_signal(self, root_id: str) -> None:
+        try:
+            await self._memory.clear_signal(root_id)
+        except NotFoundError:
+            pass
+
 
 # Separate classes for now, might not need to be, although it does leave open
 # the possibility of having different queue protocols: consumer vs producer
@@ -294,6 +305,9 @@ class Server(Connection):
 
     async def _handle_msg(self, handler: Handler, my_topic: str, payload: str) -> None:
         msg = ScheduleMessage.decode(payload.encode("utf-8"))
+
+        signal = await self._memory.get_signal(msg.root_id)
+
         call = await self._memory.get_call(msg.call_hash)
 
         # might as well check if we already have processed it
@@ -309,7 +323,7 @@ class Server(Connection):
             f"Calling {my_topic} -> {msg.root_id}/{msg.call_hash} -> {call.task_name}"
         )
         req = Request(call=call, root_id=msg.root_id)
-        ret = await handler(req, self)
+        ret = await handler(req, self, signal)
         match ret:
             case Defer(calls=calls):
                 logger.debug(
@@ -330,6 +344,11 @@ class Server(Connection):
                     await self._schedule_call_nested(my_topic, child, msg)
 
                 await asyncio.gather(*map(handle_child, calls))
+                return
+            case Abandon():
+                logger.info(
+                    f"Abandoning {msg.root_id}/{msg.call_hash}: {call.task_name}"
+                )
                 return
 
             case Abandon():
@@ -355,7 +374,6 @@ class Server(Connection):
                 # error once the context finishes.  It’s about as convoluted as just
                 # doing it this way, without any of the clarity.
                 return await self._schedule_returns(msg)
-
             case _:
                 raise ValueError("Unexpected return value from handler")
 

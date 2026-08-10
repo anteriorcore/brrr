@@ -41,6 +41,7 @@ export interface Response {
 export type RequestHandler = (
   request: Request,
   connection: Connection,
+  signal: Uint8Array,
 ) => Promise<Response | Defer | Abandon>;
 
 export class Connection {
@@ -78,6 +79,14 @@ export class Connection {
   public async readRaw(callHash: string): Promise<Uint8Array | undefined> {
     return this.memory.getValue(callHash);
   }
+
+  public async setSignal(rootId: string, signal: Uint8Array): Promise<void> {
+    await this.memory.setSignal(rootId, signal);
+  }
+
+  public async clearSignal(rootId: string): Promise<void> {
+    await this.memory.clearSignal(rootId);
+  }
 }
 
 export class Server extends Connection {
@@ -111,8 +120,9 @@ export class Server extends Connection {
     payload: string,
   ): Promise<Call | undefined> {
     const message = TaggedTuple.decodeFromString(ScheduleMessage, payload);
+    const signal = await this.memory.getSignal(message.rootId);
     const call = await this.memory.getCall(message.callHash);
-    const handled = await requestHandler({ call }, this);
+    const handled = await requestHandler({ call }, this, signal);
     if (handled instanceof Defer) {
       await Promise.all(
         handled.calls.map((child) => {

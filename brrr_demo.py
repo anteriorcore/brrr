@@ -22,6 +22,7 @@ from brrr.backends.dynamo import DynamoDbMemStore
 from brrr.backends.redis import RedisQueue
 from brrr.call import Call
 from brrr.codec import Codec
+from brrr.connection import Abandon
 from types_aiobotocore_dynamodb import DynamoDBClient
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ brrr_app: ContextVar[AppWorker[DemoContext]] = ContextVar("brrr_demo.app")
 
 topic_py = "brrr-py-demo"
 topic_ts = "brrr-ts-demo"
+CANCEL_SIGNAL = b"CANCEL"
 
 
 ### Brrr handlers
@@ -59,8 +61,10 @@ class DemoJsonKwargsCodec(Codec[DemoContext]):
         return Call(task_name=task_name, payload=payload, call_hash=call_hash)
 
     async def invoke_task(
-        self, call: Call, task, active_worker: ActiveWorker[DemoContext]
+        self, call: Call, task, active_worker: ActiveWorker[DemoContext], signal: bytes
     ) -> bytes:
+        if signal == CANCEL_SIGNAL:
+            raise Abandon()
         [kwargs] = json.loads(call.payload.decode())
         result = await task(active_worker, **kwargs)
         return self._json_bytes(result)
@@ -150,7 +154,7 @@ async def with_brrr(
             )
             token = brrr_app.set(app)
             try:
-                yield (conn, app)
+                yield conn, app
             finally:
                 brrr_app.reset(token)
 
@@ -178,6 +182,14 @@ async def get_task_result(request: web.BaseRequest):
     return response(200, dict(status="ok", result=result))
 
 
+@routes.delete("/roots/{root_id}")
+async def cancel_task(request: web.BaseRequest):
+    root_id = request.match_info["root_id"]
+    app: AppWorker = brrr_app.get()
+    await app.set_signal(root_id, CANCEL_SIGNAL)
+    return response(202, dict(status="accepted"))
+
+
 @routes.post("/{task_name}")
 async def schedule_task(request: web.BaseRequest):
     kwargs = dict(request.query)
@@ -186,8 +198,8 @@ async def schedule_task(request: web.BaseRequest):
     if task_name not in brrr_app.get()._registry.handlers:
         return response(404, {"error": "No such task"})
 
-    await brrr_app.get().schedule(task_name, topic=topic_py)(**kwargs)
-    return response(202, {"status": "accepted"})
+    root_id = await brrr_app.get().schedule(task_name, topic=topic_py)(**kwargs)
+    return response(202, {"status": "accepted", "root_id": root_id})
 
 
 ### Demo CLI
