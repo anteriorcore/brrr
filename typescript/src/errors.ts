@@ -29,6 +29,12 @@ export class SpawnLimitError extends BrrrError {
   }
 }
 
+export class DepthLimitError extends BrrrError {
+  public constructor(rootId: string, callHash: string) {
+    super(`Depth limit reached for rootId ${rootId} and callHash ${callHash}`);
+  }
+}
+
 export class TaskNotFoundError extends BrrrError {
   public constructor(taskName: string) {
     super(`Task not found: ${taskName}`);

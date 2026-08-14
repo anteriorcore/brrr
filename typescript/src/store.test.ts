@@ -28,7 +28,7 @@ await suite(import.meta.filename, async () => {
   await suite(PendingReturns.name, async () => {
     await test("Encoded payload can be encoded & decoded", async () => {
       const original = new PendingReturns(0, [
-        new PendingReturn("a", "b", "c"),
+        new PendingReturn("a", "b", "c", 10),
       ]);
       const encoded = original.encode();
       const decoded = PendingReturns.decode(encoded);
@@ -38,7 +38,7 @@ await suite(import.meta.filename, async () => {
 
     await test("Encoded payload with undefined timestamp can be encoded & decoded", async () => {
       const original = new PendingReturns(undefined, [
-        new PendingReturn("a", "b", "c"),
+        new PendingReturn("a", "b", "c", 10),
       ]);
       const encoded = original.encode();
       const decoded = PendingReturns.decode(encoded);
@@ -63,7 +63,12 @@ await suite(import.meta.filename, async () => {
           callHash: "test-pending-return-hash",
         } satisfies MemKey,
       },
-      newReturn: new PendingReturn("some-root", "some-parent", "some-topic"),
+      newReturn: new PendingReturn(
+        "some-root",
+        "some-parent",
+        "some-topic",
+        10,
+      ),
     } as const;
 
     beforeEach(async () => {
@@ -119,7 +124,7 @@ await suite(import.meta.filename, async () => {
 
       await test("simple cases to document & test shouldSchedule", async () => {
         const hash = "some-hash";
-        const base = new PendingReturn("root", "parent", "topic");
+        const base = new PendingReturn("root", "parent", "topic", 10);
 
         const cases = [
           // base case
@@ -127,13 +132,17 @@ await suite(import.meta.filename, async () => {
           // same one, shouldn't schedule again
           [hash, base, false],
           // different root, should schedule - it's a retry
-          [hash, new PendingReturn("diff-root", "parent", "topic"), true],
+          [hash, new PendingReturn("diff-root", "parent", "topic", 10), true],
           // new callHash, new PR, should schedule
           ["diff-hash", base, true],
           // continuation, shouldn't schedule again
-          [hash, new PendingReturn("root", "parent", "diff-topic"), false],
-          [hash, new PendingReturn("root", "diff-parent", "topic"), false],
-          [hash, new PendingReturn("root", "diff-parent", "diff-topic"), false],
+          [hash, new PendingReturn("root", "parent", "diff-topic", 10), false],
+          [hash, new PendingReturn("root", "diff-parent", "topic", 10), false],
+          [
+            hash,
+            new PendingReturn("root", "diff-parent", "diff-topic", 10),
+            false,
+          ],
         ] as const;
 
         for (const [hash, pr, shouldSchedule] of cases) {
@@ -202,6 +211,7 @@ await suite(import.meta.filename, async () => {
           "completely",
           "different",
           "return",
+          10,
         );
         const shouldSchedule = await memory.addPendingReturns(
           fixture.call.callHash,
@@ -229,6 +239,7 @@ await suite(import.meta.filename, async () => {
           "other-root",
           fixture.newReturn.callHash,
           fixture.newReturn.topic,
+          10,
         );
         const shouldSchedule = await memory.addPendingReturns(
           fixture.call.callHash,
@@ -253,8 +264,8 @@ await suite(import.meta.filename, async () => {
     await suite("withPendingReturnRemove", async () => {
       const mockFn =
         mock.fn<(returns: Iterable<PendingReturn>) => Promise<void>>();
-      const pendingReturn1 = new PendingReturn("a", "b", "c");
-      const pendingReturn2 = new PendingReturn("d", "e", "f");
+      const pendingReturn1 = new PendingReturn("a", "b", "c", 10);
+      const pendingReturn2 = new PendingReturn("d", "e", "f", 10);
 
       const unstableFn = mock.fn((returns: Iterable<PendingReturn>) => {
         const pendingReturns = new PendingReturns(undefined, [
@@ -278,8 +289,8 @@ await suite(import.meta.filename, async () => {
 
       await test("invokes f with pending returns and deletes the key", async () => {
         const pendingReturns = new PendingReturns(undefined, [
-          new PendingReturn("a", "b", "c"),
-          new PendingReturn("d", "e", "f"),
+          new PendingReturn("a", "b", "c", 10),
+          new PendingReturn("d", "e", "f", 10),
         ]);
         await store.set(fixture.pendingReturns.key, pendingReturns.encode());
         await memory.withPendingReturnsRemove(

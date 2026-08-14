@@ -29,11 +29,19 @@ logger = logging.getLogger(__name__)
 class SpawnLimitError(Exception): ...
 
 
+class DepthLimitError(Exception): ...
+
+
+# Default to unlimited depth
+DEFAULT_DEPTH_LIMIT: int = -1
+
+
 @dataclass
 class DeferredCall:
     # None means self
     topic: str | None
     call: Call
+    depth_limit: int | None = None
 
 
 class Defer(Exception):
@@ -127,6 +135,10 @@ class Connection:
         self._queue = queue
 
     async def _put_job(self, topic: str, job: ScheduleMessage) -> None:
+        if job.depth_limit == 0:
+            msg = f"Depth limit exceeded for {job.root_id} at job {job.call_hash}"
+            logger.error(msg)
+            raise DepthLimitError(msg)
         # Incredibly mother-of-all ad-hoc definitions.  Doesn’t use the topic
         # for counting spawn limits: the spawn limit is currently intended to
         # never be hit at all: it’s a /semantic/ check, not a /runtime/ check.
@@ -147,7 +159,12 @@ class Connection:
         await self._queue.put_message(topic, job.encode().decode("utf-8"))
 
     async def schedule_raw(
-        self, topic: str, idempotency_key: str, task_name: str, payload: bytes
+        self,
+        topic: str,
+        idempotency_key: str,
+        task_name: str,
+        payload: bytes,
+        depth_limit: int = DEFAULT_DEPTH_LIMIT,
     ) -> str | None:
         """Schedule this call on the brrr workforce.
 
@@ -167,6 +184,7 @@ class Connection:
         job = ScheduleMessage(
             call_hash=idempotency_key,
             root_id=root_id,
+            depth_limit=depth_limit,
         )
         await self._put_job(topic, job)
         return root_id
@@ -201,7 +219,11 @@ class Server(Connection):
         Server._total_workers += 1
 
     async def _schedule_return_call(self, ret: PendingReturn) -> None:
-        job = ScheduleMessage(root_id=ret.root_id, call_hash=ret.call_hash)
+        job = ScheduleMessage(
+            root_id=ret.root_id,
+            call_hash=ret.call_hash,
+            depth_limit=ret.depth_limit,
+        )
         await self._put_job(ret.topic, job)
 
     async def _schedule_call_nested(
@@ -241,12 +263,14 @@ class Server(Connection):
             root_id=parent.root_id,
             call_hash=parent.call_hash,
             topic=my_topic,
+            depth_limit=parent.depth_limit,
         )
         should_schedule = await self._memory.add_pending_return(call_hash, ret)
         if should_schedule:
             job = ScheduleMessage(
                 call_hash=call_hash,
                 root_id=parent.root_id,
+                depth_limit=child.depth_limit or (parent.depth_limit - 1),
             )
             await self._put_job(child_topic, job)
 
@@ -326,13 +350,6 @@ class Server(Connection):
             # value.
             await self._memory.set_value(msg.call_hash, ret.payload)
 
-            # This is ugly and it’s tempting to use asyncio.gather with
-            # ‘return_exceptions=True’.  However note I don’t want to blanket catch
-            # all errors: only SpawnLimitError.  You’d need to do manual filtering
-            # of errors, check if there are any non-spawnlimiterrors, if so throw
-            # those immediately from the context block, otherwise throw a spawnlimit
-            # error once the context finishes.  It’s about as convoluted as just
-            # doing it this way, without any of the clarity.
             return await self._schedule_returns(msg)
 
         else:
