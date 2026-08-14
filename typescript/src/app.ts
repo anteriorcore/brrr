@@ -66,10 +66,19 @@ export class AppConsumer<C> {
   public constructor(
     codec: Codec<C>,
     connection: Connection,
-    handlers: Handlers<C> = {},
+    handlers: Readonly<Record<string, Handler<C> | Task<C, any[], any>>> = {},
   ) {
     this.connection = connection;
-    this.registry = { codec, handlers };
+
+    const hydrated_handlers = Object.fromEntries(
+      Object.entries(handlers).map(([name, task_or_handler]) => [
+        name,
+        task_or_handler instanceof Handler
+          ? task_or_handler
+          : new Handler(task_or_handler),
+      ]),
+    ) as Handlers<C>;
+    this.registry = { codec, handlers: hydrated_handlers };
   }
 
   public schedule<A extends unknown[], R>(
