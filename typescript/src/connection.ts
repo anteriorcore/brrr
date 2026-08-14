@@ -1,6 +1,6 @@
 import type { Call } from "./call.ts";
 import { type Cache, Memory, type Store } from "./store.ts";
-import { SpawnLimitError } from "./errors.ts";
+import { DepthLimitError, SpawnLimitError } from "./errors.ts";
 import { randomUUID } from "node:crypto";
 import type { Publisher, Subscriber } from "./emitter.ts";
 import { BrrrShutdownSymbol, BrrrTaskDoneEventSymbol } from "./symbol.ts";
@@ -9,6 +9,7 @@ import { PendingReturn, ScheduleMessage, TaggedTuple } from "./tagged-tuple.ts";
 export interface DeferredCall {
   readonly topic: string | undefined;
   readonly call: Call;
+  readonly depthLimit: number | undefined;
 }
 
 export class Defer {
@@ -45,19 +46,29 @@ export class Connection {
   }
 
   public async putJob(topic: string, job: ScheduleMessage): Promise<void> {
+    if (job.depthLimit == 0) {
+      throw new DepthLimitError(job.rootId, job.callHash);
+    }
     if ((await this.cache.incr(`brrr/count/${job.rootId}`)) > this.spawnLimit) {
       throw new SpawnLimitError(this.spawnLimit, job.rootId, job.callHash);
     }
     await this.emitter.emit(topic, TaggedTuple.encodeToString(job));
   }
 
-  public async scheduleRaw(topic: string, call: Call): Promise<void> {
+  public async scheduleRaw(
+    topic: string,
+    call: Call,
+    depthLimit: number = -1,
+  ): Promise<void> {
     if (await this.memory.hasValue(call.callHash)) {
       return;
     }
     await this.memory.setCall(call);
     const rootId = randomUUID().replaceAll("-", "");
-    await this.putJob(topic, new ScheduleMessage(rootId, call.callHash));
+    await this.putJob(
+      topic,
+      new ScheduleMessage(rootId, call.callHash, depthLimit),
+    );
   }
 
   public async readRaw(callHash: string): Promise<Uint8Array | undefined> {
@@ -136,6 +147,7 @@ export class Server extends Connection {
     const job = new ScheduleMessage(
       pendingReturn.rootId,
       pendingReturn.callHash,
+      pendingReturn.depthLimit,
     );
     await this.putJob(pendingReturn.topic, job);
   }
@@ -151,13 +163,15 @@ export class Server extends Connection {
       parent.rootId,
       parent.callHash,
       topic,
+      parent.depthLimit,
     );
     const shouldSchedule = await this.memory.addPendingReturns(
       callHash,
       pendingReturn,
     );
     if (shouldSchedule) {
-      const job = new ScheduleMessage(parent.rootId, callHash);
+      const myDepthLimit = child.depthLimit ?? parent.depthLimit - 1;
+      const job = new ScheduleMessage(parent.rootId, callHash, myDepthLimit);
       await this.putJob(child.topic || topic, job);
     }
   }
