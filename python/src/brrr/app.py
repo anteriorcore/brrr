@@ -70,14 +70,16 @@ class AppConsumer[C]:
         self._connection = connection
         hydrated_handlers = {}
         for name, task_or_handler in (handlers or {}).items():
-            if isinstance(task_or_handler, Callable):
-                handler = Handler(task=task_or_handler)
-            else:
+            if isinstance(task_or_handler, Handler):
                 handler = task_or_handler
+            else:
+                handler = Handler(task=task_or_handler)
             hydrated_handlers[name] = handler
         self._registry = Registry(codec, HandlerCollection(hydrated_handlers))
 
-    def register(self, name: str | None = None):
+    def register(
+        self, name: str | None = None
+    ) -> Callable[[Task[C, ..., Any]], Task[C, ..., Any]]:
         """Decorator for registering handlers.
 
         This is an alternative to directly passing handlers into the constructor."""
