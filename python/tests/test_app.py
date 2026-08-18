@@ -469,35 +469,46 @@ async def test_debounce_child(topic: str, task_name: str) -> None:
 
 async def test_no_debounce_parent(topic: str) -> None:
     """
-    After each `one` call finishes, a foo call is added back to the stack
+    Check that multiple parent calls aren't deduped before the parent
+    call succeeds.
+
+    This specifically tests that the synthetic calls generated due to
+    DeferredCalls are not deduped for each child. We use a barrier to
+    ensure that at least 2 workers process messages so that at least
+    one parent call is rerun before all children are finished.
     """
     calls = Counter[str]()
     num_workers = 10
     store = InMemoryByteStore()
     queue = CloseOnSilenceQueue([topic])
+    barrier = asyncio.Barrier(2)
 
-    async def one(app: TestContext, a: int) -> int:
-        calls["one"] += 1
-        print(f"one({a}) app id: {app.root_id}")
+    async def child(app: TestContext, a: int) -> int:
+        calls["child"] += 1
+        await barrier.wait()
         return 1
 
-    async def foo(app: TestContext, a: int) -> int:
-        calls["foo"] += 1
+    async def parent(app: TestContext, a: int) -> int:
+        calls["parent"] += 1
         # Different argument to avoid debouncing children
-        return sum(await app.gather(*map(app.call(one), range(a))))
+        return sum(await app.gather(*map(app.call(child), range(a))))
 
     async with brrr.serve(queue, store, store) as conn:
         app = AppWorker(
-            handlers=dict(one=one, foo=foo), codec=DemoPickleCodec(), connection=conn
+            handlers=dict(parent=parent, child=child),
+            codec=DemoPickleCodec(),
+            connection=conn,
         )
-        await app.schedule(foo, topic=topic)(50)
+        await app.schedule(parent, topic=topic)(50)
         # run `num_workers` workers concurrently
         await asyncio.gather(
             *(conn.loop(topic, app.handle) for _ in range(num_workers))
         )
 
-    # We want foo=2 here
-    assert calls == Counter[str](one=50, foo=num_workers + 1)
+    # We want to call parent twice: once at the start and once after all children
+    # finish. Right now, it gets called too many times because every finished child
+    # puts parent back on the queue without checking if it's already there.
+    assert calls["parent"] > 2
 
 
 async def test_app_loop_resumable(topic: str) -> None:
