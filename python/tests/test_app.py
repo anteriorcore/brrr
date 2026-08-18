@@ -467,6 +467,39 @@ async def test_debounce_child(topic: str, task_name: str) -> None:
     assert calls == Counter({0: 1, 1: 2, 2: 2, 3: 2})
 
 
+async def test_no_debounce_parent(topic: str) -> None:
+    """
+    After each `one` call finishes, a foo call is added back to the stack
+    """
+    calls = Counter[str]()
+    num_workers = 10
+    store = InMemoryByteStore()
+    queue = CloseOnSilenceQueue([topic])
+
+    async def one(app: TestContext, a: int) -> int:
+        calls["one"] += 1
+        print(f"one({a}) app id: {app.root_id}")
+        return 1
+
+    async def foo(app: TestContext, a: int) -> int:
+        calls["foo"] += 1
+        # Different argument to avoid debouncing children
+        return sum(await app.gather(*map(app.call(one), range(a))))
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers=dict(one=one, foo=foo), codec=DemoPickleCodec(), connection=conn
+        )
+        await app.schedule(foo, topic=topic)(50)
+        # run `num_workers` workers concurrently
+        await asyncio.gather(
+            *(conn.loop(topic, app.handle) for _ in range(num_workers))
+        )
+
+    # We want foo=2 here
+    assert calls == Counter[str](one=50, foo=num_workers + 1)
+
+
 async def test_app_loop_resumable(topic: str) -> None:
     store = InMemoryByteStore()
     queue = CloseOnEmptyQueue([topic])
