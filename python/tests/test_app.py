@@ -148,23 +148,29 @@ async def test_app_gather(topic: str, task_name: str) -> None:
     - run top([3, 4])
         - attempt times_two(3), Defer and enqueue
         - attempt times_two(4), Defer and enqueue
-        - Defer and enqueue
-    - run times_two(3)
-    - run times_two(4)
+    - run times_two(3) -> 6
+    - enqueue top([3, 4])
+    - run times_two(4) -> 8
+    - enqueue top([3, 4])
     - run top([3, 4])
-        - attempt minus_one(3), Defer and enqueue
-        - attempt minus_one(4), Defer and enqueue
-        - Defer and enqueue
-    - run minus_one(3)
-    - run minus_one(4)
+        - attempt minus_one(6), Defer and enqueue
+        - attempt minus_one(8), Defer and enqueue
     - run top([3, 4])
+        - attempt minus_one(6), Debounced
+        - attempt minus_one(8), Debounced
+    - run minus_one(6) -> 5
+    - enqueue top([3, 4])
+    - run minus_one(8) -> 7
+    - enqueue top([3, 4])
+    - run top([3, 4]) -> [5, 7]
+    - run top([3, 4]) (cached)
     """
     brrr_calls = await _call_nested_gather(
         topic=topic, task_name=task_name, use_brrr_gather=True
     )
-    # TODO: once debouncing is fixed, this should be 3 instead of 5;
-    # see test_no_debounce_parent
-    assert len([c for c in brrr_calls if c.startswith("top")]) == 5
+    # TODO: once debouncing is fixed, this should be 3 instead of 4;
+    # This is always 4 due to the test only running on a single thread
+    assert len([c for c in brrr_calls if c.startswith("top")]) == 4
     (
         times_two_3_call_index,
         times_two_4_call_index,
@@ -461,25 +467,53 @@ async def test_debounce_child(topic: str, task_name: str) -> None:
     assert calls == Counter({0: 1, 1: 2, 2: 2, 3: 2})
 
 
-# This formalizes an anti-feature: we actually do want to debounce calls to the
-# same parent.  Let’s at least be explicit about this for now.
 async def test_no_debounce_parent(topic: str) -> None:
-    calls = Counter[str]()
+    """
+    Check that multiple parent calls aren't deduped before the parent
+    call succeeds.
 
-    async def one(app: TestContext, _: int) -> int:
-        calls["one"] += 1
+    This formalizes an anti-feature: we actually do want to debounce
+    calls to the same parent. Let’s at least be explicit about this
+    for now. This specifically tests that the synthetic calls generated
+    due to DeferredCalls are not deduped for each child. We use a
+    barrier to ensure that at least 2 workers process messages so that
+    at least one parent call is rerun before all children are finished.
+    Otherwise you can get the race condition where one worker finishes
+    the child and returns to the parent before another worker gets to
+    the child, which would ruin the asserts.
+    """
+    calls = Counter[str]()
+    num_workers = 10
+    store = InMemoryByteStore()
+    queue = CloseOnSilenceQueue([topic])
+    barrier = asyncio.Barrier(2)
+
+    async def child(app: TestContext, a: int) -> int:
+        calls["child"] += 1
+        await barrier.wait()
         return 1
 
-    async def foo(app: TestContext, a: int) -> int:
-        calls["foo"] += 1
+    async def parent(app: TestContext, a: int) -> int:
+        calls["parent"] += 1
         # Different argument to avoid debouncing children
-        return sum(await app.gather(*map(app.call(one), range(a))))
+        return sum(await app.gather(*map(app.call(child), range(a))))
 
-    b = LocalBrrr(topic=topic, handlers=dict(one=one, foo=foo), codec=DemoPickleCodec())
-    await b.run(foo)(50)
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers=dict(parent=parent, child=child),
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(parent, topic=topic)(50)
+        await asyncio.gather(
+            *(conn.loop(topic, app.handle) for _ in range(num_workers))
+        )
 
-    # We want foo=2 here
-    assert calls == Counter(one=50, foo=51)
+    # We want to call parent exactly twice: once at the start and once after all
+    # children finish. Right now, it gets called too many times because every
+    # finished child puts parent back on the queue without checking if it's
+    # already there.
+    assert calls["parent"] > 2
 
 
 async def test_app_loop_resumable(topic: str) -> None:
