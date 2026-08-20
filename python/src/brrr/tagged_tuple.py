@@ -58,6 +58,7 @@ class PendingReturn(TaggedTuple):
     root_id: str
     call_hash: str
     topic: str
+    depth_limit: int
 
 
 @dataclass(frozen=True)
@@ -65,3 +66,4 @@ class ScheduleMessage(TaggedTupleStrings):
     tag = 2
     root_id: str
     call_hash: str
+    depth_limit: int

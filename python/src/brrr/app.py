@@ -24,7 +24,13 @@ RootId = NewType("RootId", str)
 @dataclass
 class Registry[C]:
     codec: Codec[C]
-    handlers: TaskCollection[C]
+    handlers: HandlerCollection[C]
+
+
+@dataclass
+class Handler[C]:
+    task: Task[C, ..., Any]
+    depth_limit: int = -1
 
 
 class NotInBrrrError(Exception):
@@ -40,9 +46,12 @@ def _val2key[K, V](d: Mapping[K, V], val: V) -> K:
     raise KeyError(val)
 
 
-class TaskCollection[C](UserDict[str, Task[C, ..., Any]]):
+class HandlerCollection[C](UserDict[str, Handler[C]]):
     def task2name(self, task: Task[C, ..., Any]) -> str:
-        return _val2key(self, task)
+        for name, handler in self.items():
+            if handler.task == task:
+                return name
+        raise KeyError(task)
 
     def spec2name(self, spec: str | Task[C, ..., Any]) -> str:
         return spec if isinstance(spec, str) else self.task2name(spec)
@@ -56,10 +65,29 @@ class AppConsumer[C]:
         self,
         codec: Codec[C],
         connection: Connection,
-        handlers: Mapping[str, Task[C, ..., Any]] | None = None,
+        handlers: Mapping[str, Handler[C] | Task[C, ..., Any]] | None = None,
     ):
         self._connection = connection
-        self._registry = Registry(codec, TaskCollection(handlers or {}))
+        hydrated_handlers = {}
+        for name, task_or_handler in (handlers or {}).items():
+            if isinstance(task_or_handler, Callable):
+                handler = Handler(task=task_or_handler)
+            else:
+                handler = task_or_handler
+            hydrated_handlers[name] = handler
+        self._registry = Registry(codec, HandlerCollection(hydrated_handlers))
+
+    def register(self, name: str | None = None):
+        """Decorator for registering handlers.
+
+        This is an alternative to directly passing handlers into the constructor."""
+
+        def decorator(task: Task[C, ..., Any]) -> Task[C, ..., Any]:
+            my_name = name or task.__name__
+            self._registry.handlers[my_name] = Handler(task)
+            return task
+
+        return decorator
 
     @overload
     def schedule[**P, R](
@@ -77,11 +105,16 @@ class AppConsumer[C]:
     ) -> Callable[..., Awaitable[str | None]]:
         """Public-facing one-shot schedule method."""
         task_name = self._registry.handlers.spec2name(task_spec)
+        my_depth_limit = self._registry.handlers[task_name].depth_limit
 
         async def f(*args: Any, **kwargs: Any) -> str | None:
             call = self._registry.codec.encode_call(task_name, args, kwargs)
             return await self._connection.schedule_raw(
-                topic, call.call_hash, task_name, call.payload
+                topic,
+                call.call_hash,
+                task_name,
+                call.payload,
+                depth_limit=my_depth_limit,
             )
 
         return f
@@ -109,7 +142,7 @@ class AppWorker[C](AppConsumer[C]):
         try:
             resp = await self._registry.codec.invoke_task(
                 request.call,
-                handler,
+                handler.task,
                 ActiveWorker(conn, self._registry, RootId(request.root_id)),
             )
         except Defer as e:
@@ -166,48 +199,45 @@ class ActiveWorker[C]:
     # support explicit types for 1-5 arguments (and when all have the same type),
     # and a catch-all for the rest.
     @overload
-    async def gather[T1](self, coro_or_future1: Awaitable[T1]) -> tuple[T1]: ...
+    def gather[T1](self, coro_or_future1: Awaitable[T1], /) -> tuple[T1]: ...
     @overload
-    async def gather[T1, T2](
-        self, coro_or_future1: Awaitable[T1], coro_or_future2: Awaitable[T2]
+    def gather[T1, T2](
+        self, coro_or_future1: Awaitable[T1], coro_or_future2: Awaitable[T2], /
     ) -> tuple[T1, T2]: ...
     @overload
-    async def gather[T1, T2, T3](
+    def gather[T1, T2, T3](
         self,
         coro_or_future1: Awaitable[T1],
         coro_or_future2: Awaitable[T2],
         coro_or_future3: Awaitable[T3],
+        /,
     ) -> tuple[T1, T2, T3]: ...
     @overload
-    async def gather[T1, T2, T3, T4](
+    def gather[T1, T2, T3, T4](
         self,
         coro_or_future1: Awaitable[T1],
         coro_or_future2: Awaitable[T2],
         coro_or_future3: Awaitable[T3],
         coro_or_future4: Awaitable[T4],
+        /,
     ) -> tuple[T1, T2, T3, T4]: ...
     @overload
-    async def gather[T1, T2, T3, T4, T5](
+    def gather[T1, T2, T3, T4, T5](
         self,
         coro_or_future1: Awaitable[T1],
         coro_or_future2: Awaitable[T2],
         coro_or_future3: Awaitable[T3],
         coro_or_future4: Awaitable[T4],
         coro_or_future5: Awaitable[T5],
+        /,
     ) -> tuple[T1, T2, T3, T4, T5]: ...
     @overload
-    async def gather[T](self, *coro_or_futures: Awaitable[T]) -> list[T]: ...
-    @overload
+    def gather[T](
+        self, *coro_or_futures: *tuple[Awaitable[T], ...]
+    ) -> tuple[T, ...]: ...
     async def gather(
-        self,
-        coro_or_future1: Awaitable[Any],
-        coro_or_future2: Awaitable[Any],
-        coro_or_future3: Awaitable[Any],
-        coro_or_future4: Awaitable[Any],
-        coro_or_future5: Awaitable[Any],
-        *coro_or_futures: Awaitable[Any],
-    ) -> list[Any]: ...
-    async def gather(self, *task_awaitables: Awaitable[Any]) -> Sequence[Any]:  # type: ignore[misc]
+        self, *task_awaitables: *tuple[Awaitable[Any], ...]
+    ) -> tuple[Any, ...]:
         """
         Takes a number of task lambdas and calls each of them.
         If they've all been computed, return their values,
@@ -224,7 +254,7 @@ async def _get_deferrable(task: Awaitable[Any]) -> Response | Defer:
 
 
 # Don’t use me directly.  Only ever legal to use from within an ActiveWorker.
-async def _gather(task_awaitables: Sequence[Awaitable[Any]]) -> Sequence[Any]:
+async def _gather(task_awaitables: Sequence[Awaitable[Any]]) -> tuple[Any]:
     rets = await asyncio.gather(*map(_get_deferrable, task_awaitables))
 
     defers: list[DeferredCall] = []
@@ -241,4 +271,4 @@ async def _gather(task_awaitables: Sequence[Awaitable[Any]]) -> Sequence[Any]:
     if defers:
         raise Defer(defers)
 
-    return values
+    return tuple(values)

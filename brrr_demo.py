@@ -150,7 +150,7 @@ async def with_brrr(
             )
             token = brrr_app.set(app)
             try:
-                yield (conn, app)
+                yield conn, app
             finally:
                 brrr_app.reset(token)
 
