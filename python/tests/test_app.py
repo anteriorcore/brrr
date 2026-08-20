@@ -168,7 +168,7 @@ async def test_app_gather(topic: str, task_name: str) -> None:
     brrr_calls = await _call_nested_gather(
         topic=topic, task_name=task_name, use_brrr_gather=True
     )
-    # TODO(ENG-6177): once debouncing is fixed, this should be 3 instead of 4;
+    # TODO: once debouncing is fixed, this should be 3 instead of 4;
     # This is always 4 due to the test only running on a single thread
     assert len([c for c in brrr_calls if c.startswith("top")]) == 4
     (
@@ -472,10 +472,15 @@ async def test_no_debounce_parent(topic: str) -> None:
     Check that multiple parent calls aren't deduped before the parent
     call succeeds.
 
-    This specifically tests that the synthetic calls generated due to
-    DeferredCalls are not deduped for each child. We use a barrier to
-    ensure that at least 2 workers process messages so that at least
-    one parent call is rerun before all children are finished.
+    This formalizes an anti-feature: we actually do want to debounce
+    calls to the same parent. Let’s at least be explicit about this
+    for now. This specifically tests that the synthetic calls generated
+    due to DeferredCalls are not deduped for each child. We use a
+    barrier to ensure that at least 2 workers process messages so that
+    at least one parent call is rerun before all children are finished.
+    Otherwise you can get the race condition where one worker finishes
+    the child and returns to the parent before another worker gets to
+    the child, which would ruin the asserts.
     """
     calls = Counter[str]()
     num_workers = 10
@@ -500,14 +505,14 @@ async def test_no_debounce_parent(topic: str) -> None:
             connection=conn,
         )
         await app.schedule(parent, topic=topic)(50)
-        # run `num_workers` workers concurrently
         await asyncio.gather(
             *(conn.loop(topic, app.handle) for _ in range(num_workers))
         )
 
-    # We want to call parent twice: once at the start and once after all children
-    # finish. Right now, it gets called too many times because every finished child
-    # puts parent back on the queue without checking if it's already there.
+    # We want to call parent exactly twice: once at the start and once after all
+    # children finish. Right now, it gets called too many times because every
+    # finished child puts parent back on the queue without checking if it's
+    # already there.
     assert calls["parent"] > 2
 
 

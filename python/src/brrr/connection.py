@@ -249,7 +249,16 @@ class Server(Connection):
             await self._put_job(child_topic, job)
 
     async def _schedule_returns(self, msg: ScheduleMessage) -> None:
-        spawn_limit_err = None
+        """
+        This is ugly and it’s tempting to use asyncio.gather with
+        ‘return_exceptions=True’.  However, note: I don’t want to blanket catch
+        all errors: only SpawnLimitError.  You’d need to do manual filtering
+        of errors, check if there are any non-spawnlimiterrors, if so throw
+        those immediately from the context block, otherwise throw a spawnlimit
+        error once the context finishes.  It’s about as convoluted as just
+        doing it this way, without any of the clarity.
+        """
+        spawn_limit_errs = []
 
         async def schedule_returns_helper(returns: Iterable[PendingReturn]) -> None:
             for pending in returns:
@@ -259,14 +268,15 @@ class Server(Connection):
                     logger.info(
                         f"Spawn limit reached returning from {msg.call_hash} to {pending}; clearing the return"
                     )
-                    nonlocal spawn_limit_err
-                    spawn_limit_err = e
+                    spawn_limit_errs.append(e)
 
         await self._memory.with_pending_returns_remove(
             msg.call_hash, schedule_returns_helper
         )
-        if spawn_limit_err is not None:
-            raise spawn_limit_err
+        if len(spawn_limit_errs) == 1:
+            raise spawn_limit_errs[0]
+        if len(spawn_limit_errs) > 1:
+            raise SpawnLimitError(spawn_limit_errs)
 
     async def _handle_msg(self, handler: Handler, my_topic: str, payload: str) -> None:
         msg = ScheduleMessage.decode(payload.encode("utf-8"))
