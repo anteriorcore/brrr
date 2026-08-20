@@ -80,7 +80,7 @@ class DynamoDbMemStore(Store):
     table_name: str
 
     def key(self, mem_key: MemKey) -> dict[str, dict[str, str]]:
-        return {"pk": {"S": mem_key.hash}, "sk": {"S": mem_key.type}}
+        return {"pk": {"S": mem_key.id}, "sk": {"S": mem_key.type}}
 
     def __init__(self, client: DynamoDBClient, table_name: str):
         self.client = client
