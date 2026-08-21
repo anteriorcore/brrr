@@ -31,8 +31,10 @@ class SpawnLimitError(Exception): ...
 
 class DepthLimitError(Exception): ...
 
+
 # Default to unlimited depth
 DEFAULT_DEPTH_LIMIT = -1
+
 
 @dataclass
 class DeferredCall:

@@ -55,7 +55,7 @@ async def test_depth_limit(topic: str, task_name: str) -> None:
 
     async with brrr.serve(queue, store, store) as conn:
         app = AppWorker(
-            handlers={task_name: Handler(task_name, foo, depth_limit=depth_limit)},
+            handlers={task_name: Handler(foo, depth_limit=depth_limit)},
             codec=DemoPickleCodec(),
             connection=conn,
         )
@@ -83,9 +83,7 @@ async def test_depth_limit_not_reached(topic: str, task_name: str) -> None:
 
     async with brrr.serve(queue, store, store) as conn:
         app = AppWorker(
-            handlers={
-                task_name: Handler(task_name, foo, depth_limit=expected_num_calls + 1)
-            },
+            handlers={task_name: Handler(foo, depth_limit=expected_num_calls + 1)},
             codec=DemoPickleCodec(),
             connection=conn,
         )
