@@ -67,18 +67,11 @@ export class PendingReturn {
   public readonly rootId: string;
   public readonly callHash: string;
   public readonly topic: string;
-  public readonly depthLimit: number;
 
-  constructor(
-    rootId: string,
-    callHash: string,
-    topic: string,
-    depthLimit: number,
-  ) {
+  constructor(rootId: string, callHash: string, topic: string) {
     this.rootId = rootId;
     this.callHash = callHash;
     this.topic = topic;
-    this.depthLimit = depthLimit;
   }
 
   public isRepeatedCall(other: PendingReturn): boolean {
@@ -95,11 +88,9 @@ export class ScheduleMessage {
 
   public readonly rootId: string;
   public readonly callHash: string;
-  public readonly depthLimit: number;
 
-  constructor(rootId: string, callHash: string, depthLimit: number) {
+  constructor(rootId: string, callHash: string) {
     this.rootId = rootId;
     this.callHash = callHash;
-    this.depthLimit = depthLimit;
   }
 }

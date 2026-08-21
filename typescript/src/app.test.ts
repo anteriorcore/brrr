@@ -4,10 +4,8 @@ import {
   ActiveWorker,
   AppConsumer,
   AppWorker,
-  Handler,
   type Handlers,
   type Task,
-  wrapAllInHandlers,
 } from "./app.ts";
 import {
   type Connection,
@@ -69,7 +67,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     strictEqual(result, 15);
   }
 
-  const handlers: Handlers<TestContext> = wrapAllInHandlers({ bar, foo });
+  const handlers: Handlers<TestContext> = { bar, foo };
 
   function waitFor(call: Call, predicate?: () => Promise<void>): Promise<void> {
     return new Promise((resolve) => {
@@ -116,11 +114,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     }
 
     const workerServer = new SubscriberServer(store, cache, emitter);
-    const appWorker = new AppWorker(
-      codec,
-      workerServer,
-      wrapAllInHandlers({ foo }),
-    );
+    const appWorker = new AppWorker(codec, workerServer, { foo });
     workerServer.listen(topic, appWorker.handle);
 
     const appConsumer = new AppConsumer(codec, workerServer);
@@ -170,7 +164,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const localBrrr = new LocalBrrr(topic, {
         codec,
-        handlers: wrapAllInHandlers({ foo, bar, top }),
+        handlers: { foo, bar, top },
       });
       await localBrrr.run(top)([3, 4]);
       return calls;
@@ -202,8 +196,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("topics separate app same connection", async () => {
-    const app1 = new AppWorker(codec, server, wrapAllInHandlers({ one }));
-    const app2 = new AppWorker(codec, server, wrapAllInHandlers({ two }));
+    const app1 = new AppWorker(codec, server, { one });
+    const app2 = new AppWorker(codec, server, { two });
 
     const call = await codec.encodeCall("two", [7]);
 
@@ -220,8 +214,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   await test("topics separate app separate connection", async () => {
     const server1 = new SubscriberServer(store, cache, emitter);
     const server2 = new SubscriberServer(store, cache, emitter);
-    const app1 = new AppWorker(codec, server1, wrapAllInHandlers({ one }));
-    const app2 = new AppWorker(codec, server2, wrapAllInHandlers({ two }));
+    const app1 = new AppWorker(codec, server1, { one });
+    const app2 = new AppWorker(codec, server2, { two });
 
     server1.listen(subtopics.t1, app1.handle);
     server2.listen(subtopics.t2, app2.handle);
@@ -235,7 +229,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   await test("topics same app", async () => {
-    const app = new AppWorker(codec, server, wrapAllInHandlers({ one, two }));
+    const app = new AppWorker(codec, server, { one, two });
     server.listen(subtopics.t1, app.handle);
     server.listen(subtopics.t2, app.handle);
 
@@ -261,10 +255,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       return results.reduce((sum, val) => sum + val);
     }
 
-    const brrr = new LocalBrrr(topic, {
-      codec,
-      handlers: wrapAllInHandlers({ foo }),
-    });
+    const brrr = new LocalBrrr(topic, { codec, handlers: { foo } });
     await brrr.run(foo)(3);
 
     deepStrictEqual(Object.fromEntries(calls), { 0: 1, 1: 2, 2: 2, 3: 2 });
@@ -288,7 +279,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
     const brrr = new LocalBrrr(topic, {
       codec,
-      handlers: wrapAllInHandlers({ one, foo }),
+      handlers: { one, foo },
     });
     await brrr.run(foo)(50);
 
@@ -308,8 +299,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     }
 
     const worker = new AppWorker(codec, server, {
-      "quux/zim": new Handler(foo),
-      "quux/bar": new Handler(bar),
+      "quux/zim": foo,
+      "quux/bar": bar,
     });
     const localApp = new LocalApp(topic, server, worker);
     localApp.run();
@@ -355,10 +346,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       }
 
       const server = new Server(store, cache, publisher);
-      const app = new AppWorker(codec, server, {
-        ...handlers,
-        foo: new Handler(foo),
-      });
+      const app = new AppWorker(codec, server, { ...handlers, foo });
 
       await app.schedule(foo, topic)(122);
 
@@ -398,7 +386,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const app = new AppWorker(codec, server, {
         ...handlers,
-        foo: new Handler(foo),
+        foo,
       });
 
       while (true) {
@@ -437,8 +425,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const app = new AppWorker(codec, server, {
         ...handlers,
-        foo: new Handler(foo),
-        bar: new Handler(bar),
+        foo,
+        bar,
       });
 
       while (true) {
@@ -477,10 +465,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       }
 
       const codec = new DemoJsonCodec({ stringify, parse });
-      const app = new AppWorker(codec, server, {
-        fib: new Handler(fib, 1000),
-        top: new Handler(top, 1000),
-      });
+      const app = new AppWorker(codec, server, { fib, top });
       await app.schedule(top, topic)();
 
       await Promise.all(
@@ -519,37 +504,10 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         };
       }
 
-      const app = new MyAppWorker(
-        codec,
-        server,
-        wrapAllInHandlers({ foo, bar, baz }),
-      );
+      const app = new MyAppWorker(codec, server, { foo, bar, baz });
       await app.schedule(foo, topic)(4);
       await server.loop(topic, app.myHandle, flusher);
       strictEqual(await app.read(foo)(4), 14);
-    });
-
-    await suite("depth limit", async () => {
-      await test("cant surpass depth limit", async () => {
-        let n = 0;
-        const depthLimit = 10;
-
-        async function recurse(app: TestContext, a: number): Promise<number> {
-          n++;
-          if (a === 0) {
-            return 0;
-          }
-          return app.call(recurse)(a - 1);
-        }
-
-        const server = new Server(store, cache, publisher);
-        const app = new AppWorker(codec, server, {
-          recurse: new Handler(recurse, depthLimit),
-        });
-        await app.schedule(recurse, topic)(depthLimit + 10);
-        await rejects(server.loop(topic, app.handle, flusher));
-        strictEqual(n, depthLimit);
-      });
     });
 
     await suite("spawn limit", async () => {
@@ -570,9 +528,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           value: 100,
         });
 
-        const app = new AppWorker(codec, server, {
-          foo: new Handler(foo, 1000),
-        });
+        const app = new AppWorker(codec, server, { foo });
         await app.schedule(foo, topic)(server.spawnLimit + 3);
 
         await rejects(server.loop(topic, app.handle, flusher));
@@ -598,11 +554,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         });
         const n = server.spawnLimit + 1;
         let spawnLimitEncountered = false;
-        const app = new AppWorker(
-          codec,
-          server,
-          wrapAllInHandlers({ one, foo }),
-        );
+        const app = new AppWorker(codec, server, { one, foo });
         while (true) {
           // reset cache
           Object.defineProperty(cache, "cache", {
@@ -640,11 +592,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           return results.reduce((sum, val) => sum + val);
         }
 
-        const app = new AppWorker(
-          codec,
-          server,
-          wrapAllInHandlers({ one, foo }),
-        );
+        const app = new AppWorker(codec, server, { one, foo });
         await app.schedule(foo, topic)(server.spawnLimit + 4);
 
         await rejects(server.loop(topic, app.handle, flusher), SpawnLimitError);
@@ -674,11 +622,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           value: 100,
         });
 
-        const app = new AppWorker(
-          codec,
-          server,
-          wrapAllInHandlers({ foo, one }),
-        );
+        const app = new AppWorker(codec, server, { foo, one });
         await app.schedule(foo, topic)(server.spawnLimit + 3);
 
         await rejects(server.loop(topic, app.handle, flusher));
@@ -711,11 +655,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           value: 100,
         });
 
-        const app = new AppWorker(
-          codec,
-          server,
-          wrapAllInHandlers({ foo, same }),
-        );
+        const app = new AppWorker(codec, server, { foo, same });
         await app.schedule(foo, topic)(server.spawnLimit + 5);
 
         await server.loop(topic, app.handle, flusher);
@@ -763,7 +703,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const codec = new MyCodec();
       const server = new Server(store, cache, publisher);
-      const app = new AppWorker(codec, server, wrapAllInHandlers({ foo, bar }));
+      const app = new AppWorker(codec, server, { foo, bar });
 
       await app.schedule(foo, topic)();
       await app.schedule(bar, topic)();

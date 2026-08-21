@@ -17,25 +17,7 @@ export type NoContextTask<A extends unknown[] = any[], R = any> = (
   ...args: A
 ) => R | Promise<R>;
 
-export class Handler<C> {
-  public readonly task: Task<C, any[], any>;
-  public readonly depthLimit: number;
-
-  public constructor(task: Task<C, any[], any>, depthLimit: number = 10) {
-    this.task = task;
-    this.depthLimit = depthLimit;
-  }
-}
-
-export function wrapAllInHandlers<
-  C,
-  T extends Record<string, (...args: any[]) => any>,
->(fns: T): { [K in keyof T]: Handler<C> } {
-  return Object.fromEntries(
-    Object.entries(fns).map(([k, fn]) => [k, new Handler(fn)]),
-  ) as { [K in keyof T]: Handler<C> };
-}
-export type Handlers<C> = Readonly<Record<string, Handler<C>>>;
+export type Handlers<C> = Readonly<Record<string, Task<C, any[], any>>>;
 
 export type Registry<C> = {
   codec: Codec<C>;
@@ -52,7 +34,7 @@ export function taskIdentifierToName(
     return identifier;
   }
   for (const [name, handler] of Object.entries(handlers)) {
-    if (handler.task === identifier) {
+    if (handler === identifier) {
       return name;
     }
   }
@@ -80,11 +62,9 @@ export class AppConsumer<C> {
       taskIdentifier,
       this.registry.handlers,
     );
-    const handler = this.registry.handlers[taskName];
-    if (handler === undefined) throw new TaskNotFoundError(taskName);
     return async (...args: A) => {
       const call = await this.registry.codec.encodeCall(taskName, args);
-      await this.connection.scheduleRaw(topic, call, handler.depthLimit);
+      await this.connection.scheduleRaw(topic, call);
     };
   }
 
@@ -121,7 +101,7 @@ export class AppWorker<C> extends AppConsumer<C> {
     try {
       const payload = await this.registry.codec.invokeTask(
         request.call,
-        handler.task,
+        handler,
         new ActiveWorker(connection, this.registry),
       );
       return { payload };
@@ -155,7 +135,7 @@ export class ActiveWorker<C> {
       const call = await this.registry.codec.encodeCall(taskName, args);
       const payload = await this.connection.memory.getValue(call.callHash);
       if (!payload) {
-        throw new Defer({ topic, call, depthLimit: undefined });
+        throw new Defer({ topic, call });
       }
       return this.registry.codec.decodeReturn(taskName, payload) as R;
     };
