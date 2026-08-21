@@ -70,14 +70,16 @@ class AppConsumer[C]:
         self._connection = connection
         hydrated_handlers = {}
         for name, task_or_handler in (handlers or {}).items():
-            if isinstance(task_or_handler, Callable):
-                handler = Handler(task=task_or_handler)
-            else:
+            if isinstance(task_or_handler, Handler):
                 handler = task_or_handler
+            else:
+                handler = Handler(task=task_or_handler)
             hydrated_handlers[name] = handler
         self._registry = Registry(codec, HandlerCollection(hydrated_handlers))
 
-    def register(self, name: str | None = None):
+    def register(
+        self, name: str | None = None
+    ) -> Callable[[Task[C, ..., Any]], Task[C, ..., Any]]:
         """Decorator for registering handlers.
 
         This is an alternative to directly passing handlers into the constructor."""
@@ -199,13 +201,13 @@ class ActiveWorker[C]:
     # support explicit types for 1-5 arguments (and when all have the same type),
     # and a catch-all for the rest.
     @overload
-    def gather[T1](self, coro_or_future1: Awaitable[T1], /) -> tuple[T1]: ...
+    async def gather[T1](self, coro_or_future1: Awaitable[T1], /) -> tuple[T1]: ...
     @overload
-    def gather[T1, T2](
+    async def gather[T1, T2](
         self, coro_or_future1: Awaitable[T1], coro_or_future2: Awaitable[T2], /
     ) -> tuple[T1, T2]: ...
     @overload
-    def gather[T1, T2, T3](
+    async def gather[T1, T2, T3](
         self,
         coro_or_future1: Awaitable[T1],
         coro_or_future2: Awaitable[T2],
@@ -213,7 +215,7 @@ class ActiveWorker[C]:
         /,
     ) -> tuple[T1, T2, T3]: ...
     @overload
-    def gather[T1, T2, T3, T4](
+    async def gather[T1, T2, T3, T4](
         self,
         coro_or_future1: Awaitable[T1],
         coro_or_future2: Awaitable[T2],
@@ -222,7 +224,7 @@ class ActiveWorker[C]:
         /,
     ) -> tuple[T1, T2, T3, T4]: ...
     @overload
-    def gather[T1, T2, T3, T4, T5](
+    async def gather[T1, T2, T3, T4, T5](
         self,
         coro_or_future1: Awaitable[T1],
         coro_or_future2: Awaitable[T2],
@@ -232,7 +234,7 @@ class ActiveWorker[C]:
         /,
     ) -> tuple[T1, T2, T3, T4, T5]: ...
     @overload
-    def gather[T](
+    async def gather[T](
         self, *coro_or_futures: *tuple[Awaitable[T], ...]
     ) -> tuple[T, ...]: ...
     async def gather(
