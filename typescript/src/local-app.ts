@@ -1,7 +1,7 @@
 import { SubscriberServer } from "./connection.ts";
 import {
   AppWorker,
-  type NoContextTask,
+  type AsyncFn,
   type Handlers,
   type TaskIdentifier,
   taskIdentifierToName,
@@ -16,17 +16,17 @@ import {
 import { NotFoundError } from "./errors.ts";
 import { BrrrTaskDoneEventSymbol } from "./symbol.ts";
 
-export class LocalApp<C> {
+export class LocalApp<Env> {
   public readonly topic: string;
   public readonly server: SubscriberServer;
-  public readonly app: AppWorker<C>;
+  public readonly app: AppWorker<Env>;
 
   private hasRun = false;
 
   public constructor(
     topic: string,
     server: SubscriberServer,
-    app: AppWorker<C>,
+    app: AppWorker<Env>,
   ) {
     this.topic = topic;
     this.server = server;
@@ -35,13 +35,13 @@ export class LocalApp<C> {
 
   public schedule<A extends unknown[], R>(
     handler: Parameters<typeof this.app.schedule<A, R>>[0],
-  ): NoContextTask<A, void> {
+  ): AsyncFn<A, void> {
     return this.app.schedule(handler, this.topic);
   }
 
   public read<A extends unknown[], R>(
     ...args: Parameters<typeof this.app.read<A, R>>
-  ): NoContextTask<A, R> {
+  ): AsyncFn<A, R> {
     return this.app.read(...args);
   }
 
@@ -54,16 +54,18 @@ export class LocalApp<C> {
   }
 }
 
-export class LocalBrrr<C> {
+export class LocalBrrr<Env> {
   private readonly topic: string;
-  private readonly registry: Registry<C>;
+  private readonly registry: Registry<Env>;
 
-  public constructor(topic: string, registry: Registry<C>) {
+  public constructor(topic: string, registry: Registry<Env>) {
     this.topic = topic;
     this.registry = registry;
   }
 
-  public run<A extends unknown[], R>(taskIdentifier: TaskIdentifier<C, A, R>) {
+  public run<A extends unknown[], R>(
+    taskIdentifier: TaskIdentifier<Env, A, R>,
+  ) {
     const store = new InMemoryStore();
     const cache = new InMemoryCache();
     const emitter = new InMemoryEmitter();

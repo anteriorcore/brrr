@@ -1,21 +1,21 @@
 import functools
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Any, Awaitable, Callable
+from typing import Any
 
-from .app import AppWorker, Task
+from .app import AppWorker, AsyncFn, Task
 from .backends.in_memory import CloseOnEmptyQueue, InMemoryByteStore
 from .codec import Codec
 from .connection import Server, serve
 
 
-class LocalApp[C]:
+class LocalApp[Env]:
     """
     Low(er)-level primitive for local dev, mimics App* types.
     """
 
     def __init__(
-        self, *, topic: str, conn: Server, queue: CloseOnEmptyQueue, app: AppWorker[C]
+        self, *, topic: str, conn: Server, queue: CloseOnEmptyQueue, app: AppWorker[Env]
     ) -> None:
         self._conn = conn
         self._app = app
@@ -33,9 +33,9 @@ class LocalApp[C]:
 
 
 @asynccontextmanager
-async def local_app[C](
-    topic: str, handlers: Mapping[str, Task[C, ..., Any]], codec: Codec[C]
-) -> AsyncIterator[LocalApp[C]]:
+async def local_app[Env](
+    topic: str, handlers: Mapping[str, Task[Env, ..., Any]], codec: Codec[Env]
+) -> AsyncIterator[LocalApp[Env]]:
     """
     Helper function for unit tests which use brrr
     """
@@ -47,7 +47,7 @@ async def local_app[C](
         yield LocalApp(topic=topic, conn=conn, queue=queue, app=app)
 
 
-class LocalBrrr[C]:
+class LocalBrrr[Env]:
     """Helper class for your unit tests to use an ephemeral in-memory brrr.
 
     >>> import asyncio
@@ -65,13 +65,13 @@ class LocalBrrr[C]:
     """
 
     def __init__(
-        self, topic: str, handlers: Mapping[str, Task[C, ..., Any]], codec: Codec[C]
+        self, topic: str, handlers: Mapping[str, Task[Env, ..., Any]], codec: Codec[Env]
     ):
         self.topic = topic
         self.handlers = handlers
         self.codec = codec
 
-    def run[**P, R](self, f: Task[C, P, R] | str) -> Callable[P, Awaitable[R]]:
+    def run[**P, R](self, f: Task[Env, P, R] | str) -> AsyncFn[P, R]:
         """Create an ephemeral brrr app and runt his entire task to completion.
 
         Named `run' to emphasize this is different from app.call.  This isn't
