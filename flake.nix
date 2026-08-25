@@ -17,9 +17,10 @@
     # keep-sorted start block=true
     anterior-tools = {
       url = "github:anteriorcore/tools";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.treefmt-nix.follows = "treefmt-nix";
       inputs.flake-parts.follows = "flake-parts";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.package-lock2nix.follows = "package-lock2nix";
+      inputs.treefmt-nix.follows = "treefmt-nix";
     };
     devshell.url = "github:numtide/devshell";
     flake-parts.url = "github:hercules-ci/flake-parts";
@@ -163,7 +164,6 @@
             );
             brrrpy = callPackage ./python/package.nix { };
             brrrts = callPackage ./typescript/package.nix { };
-            docsync = callPackage ./docsync/package.nix { };
           in
           {
             config = {
@@ -199,7 +199,6 @@
               };
               treefmt = import ./nix/treefmt.nix;
               packages = {
-                inherit docsync;
                 inherit (pkgs) uv;
                 inherit (brrrpy) brrr brrr-venv-test;
                 inherit brrrts;
@@ -220,11 +219,17 @@
                 };
                 brrr-demo-ts = brrrts.overrideAttrs { meta.mainProgram = "brrr-demo"; };
               };
-              checks =
-                docsync.tests
-                // brrrpy.brrr.tests
-                // import ./nix/brrr-integration.test.nix { inherit self pkgs; }
-                // import ./nix/brrr-demo.test.nix { inherit self pkgs; };
+              checks = {
+                docsync =
+                  pkgs.runCommand "docsync" { nativeBuildInputs = [ inputs'.anterior-tools.packages.docsync ]; }
+                    ''
+                      docsync-check ${./python/src} ${./typescript/src}
+                      touch $out
+                    '';
+              }
+              // brrrpy.brrr.tests
+              // import ./nix/brrr-integration.test.nix { inherit self pkgs; }
+              // import ./nix/brrr-demo.test.nix { inherit self pkgs; };
               devshells =
                 let
                   sharedCommands = [
