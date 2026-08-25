@@ -9,17 +9,20 @@
         "nixpkgs": [
           "nixpkgs"
         ],
+        "package-lock2nix": [
+          "package-lock2nix"
+        ],
         "systems": "systems",
         "treefmt-nix": [
           "treefmt-nix"
         ]
       },
       "locked": {
-        "lastModified": 1787265679,
-        "narHash": "sha256-ct9uMKlx+1cDxcfRpD8OEfY15G9wPYCzvvzB6l5h7tk=",
+        "lastModified": 1787617978,
+        "narHash": "sha256-1dhIPlAvIpCI5zxl4FJeYCs91tBq4p12pnFCDt4LmJE=",
         "owner": "anteriorcore",
         "repo": "tools",
-        "rev": "b4c47cb2c1d6b564330f5abbbfc8f51e8804daa9",
+        "rev": "65c796e05a188f8b0861c376149d352a2769a626",
         "type": "github"
       },
       "original": {
