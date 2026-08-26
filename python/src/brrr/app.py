@@ -16,15 +16,25 @@ from brrr.store import NotFoundError
 from .codec import Codec
 from .connection import Connection, Defer, DeferredCall, Request, Response
 
-type Task[C, **P, R] = Callable[Concatenate[C, P], Awaitable[R]]
+# Any async function of P returning R.  The structural primitive Task is built
+# from, and the shape callers get back from schedule/read/call: the task's own
+# arguments, with the environment already supplied.
+type AsyncFn[**P, R] = Callable[P, Awaitable[R]]
+
+# A brrr task: a user function which receives its environment as its first
+# argument, followed by the task's own arguments.  Env is supplied by the Codec,
+# which decides what to inject on every invocation.  Usually that's an
+# ActiveWorker, so the task can call back into brrr, but a codec is free to
+# provide anything.
+type Task[Env, **P, R] = AsyncFn[Concatenate[Env, P], R]
 
 RootId = NewType("RootId", str)
 
 
 @dataclass
-class Registry[C]:
-    codec: Codec[C]
-    handlers: TaskCollection[C]
+class Registry[Env]:
+    codec: Codec[Env]
+    handlers: TaskCollection[Env]
 
 
 class NotInBrrrError(Exception):
@@ -40,23 +50,23 @@ def _val2key[K, V](d: Mapping[K, V], val: V) -> K:
     raise KeyError(val)
 
 
-class TaskCollection[C](UserDict[str, Task[C, ..., Any]]):
-    def task2name(self, task: Task[C, ..., Any]) -> str:
+class TaskCollection[Env](UserDict[str, Task[Env, ..., Any]]):
+    def task2name(self, task: Task[Env, ..., Any]) -> str:
         return _val2key(self, task)
 
-    def spec2name(self, spec: str | Task[C, ..., Any]) -> str:
+    def spec2name(self, spec: str | Task[Env, ..., Any]) -> str:
         return spec if isinstance(spec, str) else self.task2name(spec)
 
 
-class AppConsumer[C]:
+class AppConsumer[Env]:
     _connection: Connection
-    _registry: Registry[C]
+    _registry: Registry[Env]
 
     def __init__(
         self,
-        codec: Codec[C],
+        codec: Codec[Env],
         connection: Connection,
-        handlers: Mapping[str, Task[C, ..., Any]] | None = None,
+        handlers: Mapping[str, Task[Env, ..., Any]] | None = None,
     ):
         self._connection = connection
         self._registry = Registry(codec, TaskCollection(handlers or {}))
@@ -64,15 +74,13 @@ class AppConsumer[C]:
     @overload
     def schedule[**P, R](
         self,
-        task_spec: Task[C, P, R],
+        task_spec: Task[Env, P, R],
         *,
         topic: str,
-    ) -> Callable[P, Awaitable[None]]: ...
+    ) -> AsyncFn[P, None]: ...
     @overload
-    def schedule(
-        self, task_spec: str, *, topic: str
-    ) -> Callable[..., Awaitable[None]]: ...
-    def schedule(self, task_spec: Any, *, topic: str) -> Callable[..., Awaitable[None]]:
+    def schedule(self, task_spec: str, *, topic: str) -> AsyncFn[..., None]: ...
+    def schedule(self, task_spec: Any, *, topic: str) -> AsyncFn[..., None]:
         """Public-facing one-shot schedule method."""
         task_name = self._registry.handlers.spec2name(task_spec)
 
@@ -85,10 +93,10 @@ class AppConsumer[C]:
         return f
 
     @overload
-    def read[**P, R](self, task_spec: Task[C, P, R]) -> Callable[P, Awaitable[R]]: ...
+    def read[**P, R](self, task_spec: Task[Env, P, R]) -> AsyncFn[P, R]: ...
     @overload
-    def read(self, task_spec: str) -> Callable[..., Awaitable[Any]]: ...
-    def read(self, task_spec: Any) -> Callable[..., Awaitable[Any]]:
+    def read(self, task_spec: str) -> AsyncFn[..., Any]: ...
+    def read(self, task_spec: Any) -> AsyncFn[..., Any]:
         task_name = self._registry.handlers.spec2name(task_spec)
 
         async def f(*args: Any, **kwargs: Any) -> Any:
@@ -99,7 +107,7 @@ class AppConsumer[C]:
         return f
 
 
-class AppWorker[C](AppConsumer[C]):
+class AppWorker[Env](AppConsumer[Env]):
     async def handle(self, request: Request, conn: Connection) -> Response | Defer:
         """Glue between this class and the underlying Connection.loop handler"""
         task_name = request.call.task_name
@@ -115,15 +123,15 @@ class AppWorker[C](AppConsumer[C]):
         return Response(payload=resp)
 
 
-class ActiveWorker[C]:
+class ActiveWorker[Env]:
     _connection: Connection
-    _registry: Registry[C]
+    _registry: Registry[Env]
     # Exposed only for reference sake of the handler of a call; changing this
     # value has no effect on how this class behaves.  This class’ implementation
     # does not read nor care about this value.
     root_id: Final[RootId]
 
-    def __init__(self, conn: Connection, registry: Registry[C], root_id: RootId):
+    def __init__(self, conn: Connection, registry: Registry[Env], root_id: RootId):
         self._connection = conn
         self._registry = registry
         self.root_id = root_id
@@ -131,17 +139,15 @@ class ActiveWorker[C]:
     @overload
     def call[**P, R](
         self,
-        task_spec: Task[C, P, R],
+        task_spec: Task[Env, P, R],
         *,
         topic: str | None = None,
-    ) -> Callable[P, Awaitable[R]]: ...
+    ) -> AsyncFn[P, R]: ...
     @overload
     def call(
         self, task_spec: str, *, topic: str | None = None
-    ) -> Callable[..., Awaitable[Any]]: ...
-    def call(
-        self, task_spec: Any, *, topic: str | None = None
-    ) -> Callable[..., Awaitable[Any]]:
+    ) -> AsyncFn[..., Any]: ...
+    def call(self, task_spec: Any, *, topic: str | None = None) -> AsyncFn[..., Any]:
         """Directly call a brrr task from within another task.
 
         Do not call this unless you are, yourself, already inside a brrr task.

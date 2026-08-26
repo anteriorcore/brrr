@@ -3,9 +3,9 @@ import { deepStrictEqual, notDeepStrictEqual } from "node:assert/strict";
 import type { Codec } from "./codec.ts";
 import { ActiveWorker } from "./app.ts";
 
-export async function codecContractTest<C>(
-  codec: Codec<C>,
-  contextFactory: () => C,
+export async function codecContractTest<Env>(
+  codec: Codec<Env>,
+  envFactory: () => Env,
 ) {
   await suite("store-contract", async () => {
     const cases: Record<string, [unknown[], unknown[]]> = {
@@ -64,14 +64,14 @@ export async function codecContractTest<C>(
     await suite(
       "round trip: encodeCall -> invokeTask -> decodeReturn",
       async () => {
-        async function identify<T>(_: C, a: T): Promise<T> {
+        async function identify<T>(_: Env, a: T): Promise<T> {
           return a;
         }
 
         for (const [name, args] of Object.entries(cases)) {
           await test(name, async () => {
             const call = await codec.encodeCall(identify.name, [args[0]]);
-            const context = contextFactory();
+            const env = envFactory();
             const result = await codec.invokeTask(
               call,
               identify,
@@ -79,7 +79,7 @@ export async function codecContractTest<C>(
               () => null as ActiveWorker,
             );
             const decoded = await codec.decodeReturn(identify.name, result);
-            deepStrictEqual(decoded, await identify(context, args[1]));
+            deepStrictEqual(decoded, await identify(env, args[1]));
           });
         }
       },

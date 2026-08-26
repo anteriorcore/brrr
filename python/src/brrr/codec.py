@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from brrr.app import ActiveWorker, Task
 
 
-class Codec[C](ABC):
+class Codec[Env](ABC):
     """Codec for values that pass around the brrr datastore.
 
     If you want inter-language calling you'll need to ensure both languages
@@ -33,8 +33,8 @@ class Codec[C](ABC):
     async def invoke_task(
         self,
         call: Call,
-        task: Task[C, ..., Awaitable[Any]],
-        active_worker: ActiveWorker[C],
+        task: Task[Env, ..., Awaitable[Any]],
+        active_worker: ActiveWorker[Env],
     ) -> bytes:
         raise NotImplementedError()
 
