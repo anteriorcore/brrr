@@ -1,5 +1,5 @@
 import { beforeEach, suite, test } from "node:test";
-import { strictEqual } from "node:assert";
+import { notStrictEqual, strictEqual } from "node:assert";
 import {
   ActiveWorker,
   AppConsumer,
@@ -353,6 +353,27 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       await server.loop(topic, app.handle, flusher);
 
       strictEqual(await app.read(foo)(122), 457);
+    });
+
+    await test("no reschedule cached call", async () => {
+      const calls: string[] = [];
+      function foo(_: TestContext, n: number) {
+        calls.push(`foo(${n})`);
+        return n * n;
+      }
+
+      const server = new Server(store, cache, publisher);
+      const app = new AppWorker(codec, server, { ...handlers, foo });
+
+      const root_id = await app.schedule(foo, topic)(4);
+      notStrictEqual(root_id, undefined);
+      await server.loop(topic, app.handle, flusher);
+      strictEqual(await app.read(foo)(4), 16);
+
+      const empty_root_id = await app.schedule(foo, topic)(4);
+      strictEqual(empty_root_id, undefined);
+      await server.loop(topic, app.handle, flusher);
+      strictEqual(calls.length, 1);
     });
 
     await test("loop with no tasks", async () => {

@@ -52,12 +52,39 @@ async def test_app_worker(topic: str, task_name: str) -> None:
             codec=DemoPickleCodec(),
             connection=conn,
         )
-        await app.schedule(foo, topic=topic)(122)
+        root_id = await app.schedule(foo, topic=topic)(122)
+        assert root_id is not None
         await conn.loop(topic, app.handle)
         assert await app.read(foo)(122) == 457
         assert await app.read(name_foo)(122) == 457
         assert await app.read(bar)(123) == 456
         assert await app.read(name_bar)(123) == 456
+
+
+async def test_app_worker_no_reschedule_cached(topic: str) -> None:
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue([topic])
+    calls = []
+
+    async def foo(app: TestContext, a: int) -> int:
+        calls.append(f"foo({a})")
+        return a * a
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker[TestContext](
+            handlers={"foo": foo},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        root_id = await app.schedule(foo, topic=topic)(4)
+        assert root_id is not None
+        await conn.loop(topic, app.handle)
+        assert await app.read(foo)(4) == 16
+
+        empty_root_id = await app.schedule(foo, topic=topic)(4)
+        assert empty_root_id is None
+        await conn.loop(topic, app.handle)
+        assert len(calls) == 1
 
 
 async def test_app_consumer(topic: str, task_name: str) -> None:

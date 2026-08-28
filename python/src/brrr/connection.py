@@ -148,17 +148,18 @@ class Connection:
 
     async def schedule_raw(
         self, topic: str, idempotency_key: str, task_name: str, payload: bytes
-    ) -> None:
+    ) -> str | None:
         """Schedule this call on the brrr workforce.
 
-        This method should be called for top-level workflow calls only.
-
+        This method should be called for top-level workflow calls only. Returns
+        the root id for the scheduled task or None if the value is already
+        cached.
         """
         # Best effort optimization which is NOT semantically relevant.  It would
         # in fact be a good test to disable this and verify all unit tests still
         # pass (discrepancies in task call counts notwithstanding).
         if await self._memory.has_value(idempotency_key):
-            return
+            return None
         call = Call(task_name=task_name, payload=payload, call_hash=idempotency_key)
         await self._memory.set_call(call)
         # Random root id for every call so we can disambiguate retries
@@ -168,6 +169,7 @@ class Connection:
             root_id=root_id,
         )
         await self._put_job(topic, job)
+        return root_id
 
     async def read_raw(self, call_hash: str) -> bytes | None:
         """

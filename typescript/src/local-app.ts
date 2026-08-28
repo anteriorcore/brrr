@@ -35,7 +35,7 @@ export class LocalApp<C> {
 
   public schedule<A extends unknown[], R>(
     handler: Parameters<typeof this.app.schedule<A, R>>[0],
-  ): NoContextTask<A, void> {
+  ): NoContextTask<A, string | undefined> {
     return this.app.schedule(handler, this.topic);
   }
 

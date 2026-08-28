@@ -51,13 +51,17 @@ export class Connection {
     await this.emitter.emit(topic, TaggedTuple.encodeToString(job));
   }
 
-  public async scheduleRaw(topic: string, call: Call): Promise<void> {
+  public async scheduleRaw(
+    topic: string,
+    call: Call,
+  ): Promise<string | undefined> {
     if (await this.memory.hasValue(call.callHash)) {
       return;
     }
     await this.memory.setCall(call);
     const rootId = randomUUID().replaceAll("-", "");
     await this.putJob(topic, new ScheduleMessage(rootId, call.callHash));
+    return rootId;
   }
 
   public async readRaw(callHash: string): Promise<Uint8Array | undefined> {
