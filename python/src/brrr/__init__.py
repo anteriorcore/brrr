@@ -14,6 +14,9 @@ from .app import (
     Task as Task,
 )
 from .connection import (
+    Abandon as Abandon,
+)
+from .connection import (
     Connection as Connection,
 )
 from .connection import (

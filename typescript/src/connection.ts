@@ -19,6 +19,8 @@ export class Defer {
   }
 }
 
+export class Abandon {}
+
 export interface Request {
   readonly call: Call;
 }
@@ -30,7 +32,7 @@ export interface Response {
 export type RequestHandler = (
   request: Request,
   connection: Connection,
-) => Promise<Response | Defer>;
+) => Promise<Response | Defer | Abandon>;
 
 export class Connection {
   public readonly cache: Cache;
@@ -110,6 +112,7 @@ export class Server extends Connection {
       );
       return;
     }
+    if (handled instanceof Abandon) return;
     await this.memory.setValue(message.callHash, handled.payload);
     let spawnLimitError: SpawnLimitError;
     await this.memory.withPendingReturnsRemove(

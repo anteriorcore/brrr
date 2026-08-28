@@ -1,4 +1,5 @@
 import {
+  Abandon,
   type Connection,
   Defer,
   type DeferredCall,
@@ -93,7 +94,7 @@ export class AppWorker<C> extends AppConsumer<C> {
   public readonly handle = async (
     request: Request,
     connection: Connection,
-  ): Promise<Response | Defer> => {
+  ): Promise<Response | Defer | Abandon> => {
     const handler = this.registry.handlers[request.call.taskName];
     if (!handler) {
       throw new TaskNotFoundError(request.call.taskName);
@@ -106,7 +107,7 @@ export class AppWorker<C> extends AppConsumer<C> {
       );
       return { payload };
     } catch (err) {
-      if (err instanceof Defer) {
+      if (err instanceof Defer || err instanceof Abandon) {
         return err;
       }
       throw err;

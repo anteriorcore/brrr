@@ -48,6 +48,16 @@ class Defer(Exception):
         self.calls = calls
 
 
+class Abandon(Exception):
+    """
+    When a task is called and should no longer be computed, an Abandon exception
+    is raised. Workers catch this exception and do not reschedule the task or any
+    parent tasks. For instance, this can be used to end a task tree without
+    killing the worker if incorrect input is received or some other unrecoverable
+    error occurs.
+    """
+
+
 @dataclass
 class Request:
     # The actual semantically meaningful part of the call
@@ -68,7 +78,7 @@ class Response:
     payload: bytes
 
 
-type Handler = Callable[[Request, Connection], Awaitable[Response | Defer]]
+type Handler = Callable[[Request, Connection], Awaitable[Response | Defer | Abandon]]
 
 
 @asynccontextmanager
@@ -298,45 +308,54 @@ class Server(Connection):
         )
         req = Request(call=call, root_id=msg.root_id)
         ret = await handler(req, self)
-        if isinstance(ret, Defer):
-            logger.debug(f"Deferring {msg.root_id}/{msg.call_hash}: {call.task_name}")
+        match ret:
+            case Defer(calls=calls):
+                logger.debug(
+                    f"Deferring {msg.root_id}/{msg.call_hash}: {call.task_name}"
+                )
 
-            # Any of these calls could throw a SpawnLimitError: let that bubble
-            # up.  This is very ugly but I want to keep the contract of throwing
-            # exceptions on spawn limits, even though it’s _technically_ a user
-            # error.  It’s a very nice failure mode and it allows the user to
-            # automatically lean on their fleet monitoring to measure the health
-            # of their workflows, and debugging this issue can otherwise be very
-            # hard.  Of course the “proper” way for a language to support this
-            # is Lisp’s restarts, where an exception doesn’t unroll the stack
-            # but allows the caller to handle it from the point at which it
-            # occurs.
-            async def handle_child(child: DeferredCall) -> None:
-                await self._schedule_call_nested(my_topic, child, msg)
+                # Any of these calls could throw a SpawnLimitError: let that bubble
+                # up.  This is very ugly but I want to keep the contract of throwing
+                # exceptions on spawn limits, even though it’s _technically_ a user
+                # error.  It’s a very nice failure mode and it allows the user to
+                # automatically lean on their fleet monitoring to measure the health
+                # of their workflows, and debugging this issue can otherwise be very
+                # hard.  Of course the “proper” way for a language to support this
+                # is Lisp’s restarts, where an exception doesn’t unroll the stack
+                # but allows the caller to handle it from the point at which it
+                # occurs.
+                async def handle_child(child: DeferredCall) -> None:
+                    await self._schedule_call_nested(my_topic, child, msg)
 
-            await asyncio.gather(*map(handle_child, ret.calls))
-            return
+                await asyncio.gather(*map(handle_child, calls))
+                return
 
-        elif isinstance(ret, Response):
-            logger.info(
-                f"Handled {my_topic} -> {msg.root_id}/{msg.call_hash} -> {call.task_name}"
-            )
+            case Abandon():
+                logger.info(
+                    f"Abandoning {msg.root_id}/{msg.call_hash}: {call.task_name}"
+                )
+                return
 
-            # This can end up in a race against another worker to write the
-            # value.
-            await self._memory.set_value(msg.call_hash, ret.payload)
+            case Response(payload=resp_payload):
+                logger.info(
+                    f"Handled {my_topic} -> {msg.root_id}/{msg.call_hash} -> {call.task_name}"
+                )
 
-            # This is ugly and it’s tempting to use asyncio.gather with
-            # ‘return_exceptions=True’.  However note I don’t want to blanket catch
-            # all errors: only SpawnLimitError.  You’d need to do manual filtering
-            # of errors, check if there are any non-spawnlimiterrors, if so throw
-            # those immediately from the context block, otherwise throw a spawnlimit
-            # error once the context finishes.  It’s about as convoluted as just
-            # doing it this way, without any of the clarity.
-            return await self._schedule_returns(msg)
+                # This can end up in a race against another worker to write the
+                # value.
+                await self._memory.set_value(msg.call_hash, resp_payload)
 
-        else:
-            raise ValueError("Unexpected return value from handler")
+                # This is ugly and it’s tempting to use asyncio.gather with
+                # ‘return_exceptions=True’.  However note I don’t want to blanket catch
+                # all errors: only SpawnLimitError.  You’d need to do manual filtering
+                # of errors, check if there are any non-spawnlimiterrors, if so throw
+                # those immediately from the context block, otherwise throw a spawnlimit
+                # error once the context finishes.  It’s about as convoluted as just
+                # doing it this way, without any of the clarity.
+                return await self._schedule_returns(msg)
+
+            case _:
+                raise ValueError("Unexpected return value from handler")
 
     async def loop(self, topic: str, handler: Handler) -> None:
         """Workers take jobs from the queue, one at a time, and handle them.
