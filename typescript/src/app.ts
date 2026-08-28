@@ -57,14 +57,14 @@ export class AppConsumer<C> {
   public schedule<A extends unknown[], R>(
     taskIdentifier: TaskIdentifier<C, A, R>,
     topic: string,
-  ): (...args: A) => Promise<void> {
+  ): (...args: A) => Promise<string | undefined> {
     const taskName = taskIdentifierToName(
       taskIdentifier,
       this.registry.handlers,
     );
-    return async (...args: A) => {
+    return async (...args: A): Promise<string | undefined> => {
       const call = await this.registry.codec.encodeCall(taskName, args);
-      await this.connection.scheduleRaw(topic, call);
+      return await this.connection.scheduleRaw(topic, call);
     };
   }
 

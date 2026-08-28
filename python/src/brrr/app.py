@@ -72,13 +72,15 @@ class AppConsumer[C]:
     def schedule(
         self, task_spec: str, *, topic: str
     ) -> Callable[..., Awaitable[None]]: ...
-    def schedule(self, task_spec: Any, *, topic: str) -> Callable[..., Awaitable[None]]:
+    def schedule(
+        self, task_spec: Any, *, topic: str
+    ) -> Callable[..., Awaitable[str | None]]:
         """Public-facing one-shot schedule method."""
         task_name = self._registry.handlers.spec2name(task_spec)
 
-        async def f(*args: Any, **kwargs: Any) -> None:
+        async def f(*args: Any, **kwargs: Any) -> str | None:
             call = self._registry.codec.encode_call(task_name, args, kwargs)
-            await self._connection.schedule_raw(
+            return await self._connection.schedule_raw(
                 topic, call.call_hash, task_name, call.payload
             )
 
