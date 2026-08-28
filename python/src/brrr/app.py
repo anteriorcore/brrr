@@ -67,11 +67,11 @@ class AppConsumer[C]:
         task_spec: Task[C, P, R],
         *,
         topic: str,
-    ) -> Callable[P, Awaitable[None]]: ...
+    ) -> Callable[P, Awaitable[str | None]]: ...
     @overload
     def schedule(
         self, task_spec: str, *, topic: str
-    ) -> Callable[..., Awaitable[None]]: ...
+    ) -> Callable[..., Awaitable[str | None]]: ...
     def schedule(
         self, task_spec: Any, *, topic: str
     ) -> Callable[..., Awaitable[str | None]]:

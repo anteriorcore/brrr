@@ -159,7 +159,7 @@ class Connection:
         # in fact be a good test to disable this and verify all unit tests still
         # pass (discrepancies in task call counts notwithstanding).
         if await self._memory.has_value(idempotency_key):
-            return
+            return None
         call = Call(task_name=task_name, payload=payload, call_hash=idempotency_key)
         await self._memory.set_call(call)
         # Random root id for every call so we can disambiguate retries
