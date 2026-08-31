@@ -33,7 +33,7 @@ class DepthLimitError(Exception): ...
 
 
 # Default to unlimited depth
-DEFAULT_DEPTH_LIMIT: int = -1
+DEFAULT_DEPTH_LIMIT = None
 
 
 @dataclass
@@ -164,7 +164,7 @@ class Connection:
         idempotency_key: str,
         task_name: str,
         payload: bytes,
-        depth_limit: int = DEFAULT_DEPTH_LIMIT,
+        depth_limit: int | None = DEFAULT_DEPTH_LIMIT,
     ) -> str | None:
         """Schedule this call on the brrr workforce.
 
@@ -267,10 +267,17 @@ class Server(Connection):
         )
         should_schedule = await self._memory.add_pending_return(call_hash, ret)
         if should_schedule:
+            if child.depth_limit:
+                depth_limit = child.depth_limit
+            elif parent.depth_limit:
+                depth_limit = parent.depth_limit - 1
+            else:
+                depth_limit = None
+
             job = ScheduleMessage(
                 call_hash=call_hash,
                 root_id=parent.root_id,
-                depth_limit=child.depth_limit or (parent.depth_limit - 1),
+                depth_limit=depth_limit,
             )
             await self._put_job(child_topic, job)
 
