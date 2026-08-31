@@ -7,8 +7,11 @@ import bencodepy
 _bc = bencodepy.Bencode(encoding="utf-8")
 
 OPTIONAL_FLAG_NAME = "tt_optional"
+
+
 def optional_field[T]() -> Any:
     return dataclasses.field(metadata={OPTIONAL_FLAG_NAME: True})
+
 
 @dataclass(frozen=True)
 class TaggedTuple:
@@ -41,12 +44,15 @@ class TaggedTuple:
                 return to_tagged_tuple_optional(val)
             return val
 
-        return (self.tag,) + tuple(enc(field, getattr(self, field.name)) for field in dataclasses.fields(self))
+        return (self.tag,) + tuple(
+            enc(field, getattr(self, field.name)) for field in dataclasses.fields(self)
+        )
 
     @classmethod
     def fromtuple(cls, t: tuple[Any, ...]) -> Self:
         if t[0] != cls.tag:
             raise ValueError(f"{cls.__name__} decode tag mismatch: {t[0]} != {cls.tag}")
+
         def dec(field: dataclasses.Field[Any], val: Any) -> Any:
             if not field.metadata.get(OPTIONAL_FLAG_NAME):
                 return val
@@ -56,8 +62,13 @@ class TaggedTuple:
                 case [bare_val]:
                     return bare_val
                 case _:
-                    raise ValueError(f"malformed optional field: {cls.__name__}.{field.name} = {val}")
-        return cls(*(dec(field, val) for field, val in zip(dataclasses.fields(cls), t[1:])))
+                    raise ValueError(
+                        f"malformed optional field: {cls.__name__}.{field.name} = {val}"
+                    )
+
+        return cls(
+            *(dec(field, val) for field, val in zip(dataclasses.fields(cls), t[1:]))
+        )
 
 
 @dataclass(frozen=True)
