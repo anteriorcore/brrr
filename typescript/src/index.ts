@@ -5,6 +5,7 @@ export {
   AppConsumer,
   AppWorker,
   ActiveWorker,
+  Handler,
 } from "./app.ts";
 export type { Call } from "./call.ts";
 export type { Codec } from "./codec.ts";
@@ -26,6 +27,7 @@ export { BrrrShutdownSymbol, BrrrTaskDoneEventSymbol } from "./symbol.ts";
 export {
   NotFoundError,
   CasRetryLimitReachedError,
+  DepthLimitError,
   SpawnLimitError,
   TaskNotFoundError,
   TagMismatchError,

@@ -14,7 +14,14 @@ from typing import Any, Concatenate, Final, NewType, assert_never, overload
 from brrr.store import NotFoundError
 
 from .codec import Codec
-from .connection import Connection, Defer, DeferredCall, Request, Response
+from .connection import (
+    DEFAULT_DEPTH_LIMIT,
+    Connection,
+    Defer,
+    DeferredCall,
+    Request,
+    Response,
+)
 
 type Task[C, **P, R] = Callable[Concatenate[C, P], Awaitable[R]]
 
@@ -30,7 +37,8 @@ class Registry[C]:
 @dataclass
 class Handler[C]:
     task: Task[C, ..., Any]
-    depth_limit: int = -1
+    # None means unlimited depth
+    depth_limit: int | None = DEFAULT_DEPTH_LIMIT
 
 
 class NotInBrrrError(Exception):
@@ -107,7 +115,10 @@ class AppConsumer[C]:
     ) -> Callable[..., Awaitable[str | None]]:
         """Public-facing one-shot schedule method."""
         task_name = self._registry.handlers.spec2name(task_spec)
-        my_depth_limit = self._registry.handlers[task_name].depth_limit
+        if task_name not in self._registry.handlers:
+            my_depth_limit = DEFAULT_DEPTH_LIMIT
+        else:
+            my_depth_limit = self._registry.handlers[task_name].depth_limit
 
         async def f(*args: Any, **kwargs: Any) -> str | None:
             call = self._registry.codec.encode_call(task_name, args, kwargs)

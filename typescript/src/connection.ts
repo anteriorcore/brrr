@@ -46,7 +46,7 @@ export class Connection {
   }
 
   public async putJob(topic: string, job: ScheduleMessage): Promise<void> {
-    if (job.depthLimit == 0) {
+    if (job.depthLimit === 0) {
       throw new DepthLimitError(job.rootId, job.callHash);
     }
     if ((await this.cache.incr(`brrr/count/${job.rootId}`)) > this.spawnLimit) {
@@ -58,7 +58,7 @@ export class Connection {
   public async scheduleRaw(
     topic: string,
     call: Call,
-    depthLimit: number = -1,
+    depthLimit?: number,
   ): Promise<string | undefined> {
     if (await this.memory.hasValue(call.callHash)) {
       return;
@@ -171,7 +171,13 @@ export class Server extends Connection {
       pendingReturn,
     );
     if (shouldSchedule) {
-      const myDepthLimit = child.depthLimit ?? parent.depthLimit - 1;
+      // An undefined depth limit means unlimited, so it never decrements
+      let myDepthLimit: number | undefined;
+      if (child.depthLimit) {
+        myDepthLimit = child.depthLimit;
+      } else if (parent.depthLimit) {
+        myDepthLimit = parent.depthLimit - 1;
+      }
       const job = new ScheduleMessage(parent.rootId, callHash, myDepthLimit);
       await this.putJob(child.topic || topic, job);
     }

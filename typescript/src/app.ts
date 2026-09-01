@@ -19,9 +19,10 @@ export type NoContextTask<A extends unknown[] = any[], R = any> = (
 
 export class Handler<C> {
   public readonly task: Task<C, any[], any>;
-  public readonly depthLimit: number;
+  // Undefined means unlimited depth
+  public readonly depthLimit: number | undefined;
 
-  public constructor(task: Task<C, any[], any>, depthLimit: number = 10) {
+  public constructor(task: Task<C, any[], any>, depthLimit?: number) {
     this.task = task;
     this.depthLimit = depthLimit;
   }
@@ -90,10 +91,9 @@ export class AppConsumer<C> {
       this.registry.handlers,
     );
     const handler = this.registry.handlers[taskName];
-    if (handler === undefined) throw new TaskNotFoundError(taskName);
     return async (...args: A): Promise<string | undefined> => {
       const call = await this.registry.codec.encodeCall(taskName, args);
-      return await this.connection.scheduleRaw(topic, call, handler.depthLimit);
+      return await this.connection.scheduleRaw(topic, call, handler?.depthLimit);
     };
   }
 

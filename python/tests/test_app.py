@@ -1,6 +1,5 @@
 import asyncio
 import dataclasses
-import typing
 from collections import Counter
 from typing import Any, cast
 from unittest.mock import AsyncMock
@@ -155,7 +154,6 @@ async def _call_nested_gather(
         result: list[int] | tuple[int, ...] = await gather(
             *[not_a_brrr_task(app, x) for x in xs]
         )
-        typing.assert_type(result, list[int] | tuple[int, ...])
         return list(result)
 
     handlers: dict[str, Task[TestContext, ..., Any]] = dict(

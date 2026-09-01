@@ -10,7 +10,7 @@ OPTIONAL_FLAG_NAME = "tt_optional"
 
 
 def optional_field[T]() -> Any:
-    return dataclasses.field(metadata={OPTIONAL_FLAG_NAME: True})
+    return dataclasses.field(default=None, metadata={OPTIONAL_FLAG_NAME: True})
 
 
 @dataclass(frozen=True)
@@ -52,6 +52,10 @@ class TaggedTuple:
     def fromtuple(cls, t: tuple[Any, ...]) -> Self:
         if t[0] != cls.tag:
             raise ValueError(f"{cls.__name__} decode tag mismatch: {t[0]} != {cls.tag}")
+        if len(t) - 1 != len(dataclasses.fields(cls)):
+            raise ValueError(
+                f"{cls.__name__} incorrect number of fields: {len(dataclasses.fields(cls))} vs {len(t) - 1}"
+            )
 
         def dec(field: dataclasses.Field[Any], val: Any) -> Any:
             if not field.metadata.get(OPTIONAL_FLAG_NAME):
@@ -84,7 +88,7 @@ class TaggedTupleStrings(TaggedTuple):
 
 @dataclass(frozen=True)
 class PendingReturn(TaggedTuple):
-    tag = 1
+    tag = 3
     root_id: str
     call_hash: str
     topic: str
@@ -93,7 +97,7 @@ class PendingReturn(TaggedTuple):
 
 @dataclass(frozen=True)
 class ScheduleMessage(TaggedTupleStrings):
-    tag = 2
+    tag = 4
     root_id: str
     call_hash: str
     depth_limit: int | None = optional_field()
