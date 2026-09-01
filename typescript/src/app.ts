@@ -6,7 +6,7 @@ import {
   type Response,
 } from "./connection.ts";
 import type { Codec } from "./codec.ts";
-import { NotFoundError, TaskNotFoundError } from "./errors.ts";
+import { DepthLimitError, NotFoundError, TaskNotFoundError } from "./errors.ts";
 
 export type Task<C, A extends unknown[] = any[], R = any> = NoContextTask<
   [C, ...A],
@@ -85,15 +85,15 @@ export class AppConsumer<C> {
   public schedule<A extends unknown[], R>(
     taskIdentifier: TaskIdentifier<C, A, R>,
     topic: string,
+    depthLimit?: number,
   ): (...args: A) => Promise<string | undefined> {
     const taskName = taskIdentifierToName(
       taskIdentifier,
       this.registry.handlers,
     );
-    const handler = this.registry.handlers[taskName];
     return async (...args: A): Promise<string | undefined> => {
       const call = await this.registry.codec.encodeCall(taskName, args);
-      return await this.connection.scheduleRaw(topic, call, handler?.depthLimit);
+      return await this.connection.scheduleRaw(topic, call, depthLimit);
     };
   }
 
@@ -127,6 +127,17 @@ export class AppWorker<C> extends AppConsumer<C> {
     if (!handler) {
       throw new TaskNotFoundError(request.call.taskName);
     }
+    let myDepthBudget: number | undefined;
+    if (request.depthBudget !== undefined && handler.depthLimit !== undefined) {
+      myDepthBudget = Math.min(request.depthBudget, handler.depthLimit);
+    } else {
+      myDepthBudget =
+        request.depthBudget !== undefined
+          ? request.depthBudget
+          : handler.depthLimit;
+    }
+    if (myDepthBudget !== undefined && myDepthBudget < 1)
+      throw new DepthLimitError(request.rootId, request.call.callHash);
     try {
       const payload = await this.registry.codec.invokeTask(
         request.call,
@@ -136,7 +147,15 @@ export class AppWorker<C> extends AppConsumer<C> {
       return { payload };
     } catch (err) {
       if (err instanceof Defer) {
-        return err;
+        const deferredCalls = err.calls.map((dcall) => {
+          return {
+            topic: dcall.topic,
+            call: dcall.call,
+            depthBudget:
+              myDepthBudget !== undefined ? myDepthBudget - 1 : undefined,
+          };
+        });
+        return new Defer(...deferredCalls);
       }
       throw err;
     }
@@ -164,7 +183,7 @@ export class ActiveWorker<C> {
       const call = await this.registry.codec.encodeCall(taskName, args);
       const payload = await this.connection.memory.getValue(call.callHash);
       if (!payload) {
-        throw new Defer({ topic, call, depthLimit: undefined });
+        throw new Defer({ topic, call, depthBudget: undefined });
       }
       return this.registry.codec.decodeReturn(taskName, payload) as R;
     };

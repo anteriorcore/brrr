@@ -9,7 +9,7 @@ import { PendingReturn, ScheduleMessage, TaggedTuple } from "./tagged-tuple.ts";
 export interface DeferredCall {
   readonly topic: string | undefined;
   readonly call: Call;
-  readonly depthLimit: number | undefined;
+  readonly depthBudget: number | undefined;
 }
 
 export class Defer {
@@ -22,6 +22,8 @@ export class Defer {
 
 export interface Request {
   readonly call: Call;
+  readonly rootId: string;
+  readonly depthBudget: number | undefined;
 }
 
 export interface Response {
@@ -46,9 +48,6 @@ export class Connection {
   }
 
   public async putJob(topic: string, job: ScheduleMessage): Promise<void> {
-    if (job.depthLimit === 0) {
-      throw new DepthLimitError(job.rootId, job.callHash);
-    }
     if ((await this.cache.incr(`brrr/count/${job.rootId}`)) > this.spawnLimit) {
       throw new SpawnLimitError(this.spawnLimit, job.rootId, job.callHash);
     }
@@ -109,7 +108,10 @@ export class Server extends Connection {
   ): Promise<Call | undefined> {
     const message = TaggedTuple.decodeFromString(ScheduleMessage, payload);
     const call = await this.memory.getCall(message.callHash);
-    const handled = await requestHandler({ call }, this);
+    const handled = await requestHandler(
+      { call, rootId: message.rootId, depthBudget: message.depthBudget },
+      this,
+    );
     if (handled instanceof Defer) {
       await Promise.all(
         handled.calls.map((child) => {
@@ -148,7 +150,7 @@ export class Server extends Connection {
     const job = new ScheduleMessage(
       pendingReturn.rootId,
       pendingReturn.callHash,
-      pendingReturn.depthLimit,
+      pendingReturn.depthBudget,
     );
     await this.putJob(pendingReturn.topic, job);
   }
@@ -164,21 +166,18 @@ export class Server extends Connection {
       parent.rootId,
       parent.callHash,
       topic,
-      parent.depthLimit,
+      parent.depthBudget,
     );
     const shouldSchedule = await this.memory.addPendingReturns(
       callHash,
       pendingReturn,
     );
     if (shouldSchedule) {
-      // An undefined depth limit means unlimited, so it never decrements
-      let myDepthLimit: number | undefined;
-      if (child.depthLimit) {
-        myDepthLimit = child.depthLimit;
-      } else if (parent.depthLimit) {
-        myDepthLimit = parent.depthLimit - 1;
-      }
-      const job = new ScheduleMessage(parent.rootId, callHash, myDepthLimit);
+      const job = new ScheduleMessage(
+        parent.rootId,
+        callHash,
+        child.depthBudget,
+      );
       await this.putJob(child.topic || topic, job);
     }
   }

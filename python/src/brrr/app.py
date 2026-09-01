@@ -15,10 +15,10 @@ from brrr.store import NotFoundError
 
 from .codec import Codec
 from .connection import (
-    DEFAULT_DEPTH_LIMIT,
     Connection,
     Defer,
     DeferredCall,
+    DepthLimitError,
     Request,
     Response,
 )
@@ -38,7 +38,7 @@ class Registry[C]:
 class Handler[C]:
     task: Task[C, ..., Any]
     # None means unlimited depth
-    depth_limit: int | None = DEFAULT_DEPTH_LIMIT
+    depth_limit: int | None = None
 
 
 class NotInBrrrError(Exception):
@@ -105,20 +105,25 @@ class AppConsumer[C]:
         task_spec: Task[C, P, R],
         *,
         topic: str,
+        depth_limit: int | None = None,
     ) -> Callable[P, Awaitable[str | None]]: ...
     @overload
     def schedule(
-        self, task_spec: str, *, topic: str
+        self,
+        task_spec: str,
+        *,
+        topic: str,
+        depth_limit: int | None = None,
     ) -> Callable[..., Awaitable[str | None]]: ...
     def schedule(
-        self, task_spec: Any, *, topic: str
+        self,
+        task_spec: Any,
+        *,
+        topic: str,
+        depth_limit: int | None = None,
     ) -> Callable[..., Awaitable[str | None]]:
         """Public-facing one-shot schedule method."""
         task_name = self._registry.handlers.spec2name(task_spec)
-        if task_name not in self._registry.handlers:
-            my_depth_limit = DEFAULT_DEPTH_LIMIT
-        else:
-            my_depth_limit = self._registry.handlers[task_name].depth_limit
 
         async def f(*args: Any, **kwargs: Any) -> str | None:
             call = self._registry.codec.encode_call(task_name, args, kwargs)
@@ -127,7 +132,7 @@ class AppConsumer[C]:
                 call.call_hash,
                 task_name,
                 call.payload,
-                depth_limit=my_depth_limit,
+                depth_limit=depth_limit,
             )
 
         return f
@@ -152,6 +157,14 @@ class AppWorker[C](AppConsumer[C]):
         """Glue between this class and the underlying Connection.loop handler"""
         task_name = request.call.task_name
         handler = self._registry.handlers[task_name]
+        budgets = [
+            b for b in (request.depth_budget, handler.depth_limit) if b is not None
+        ]
+        my_depth_budget = min(budgets) if budgets else None
+        if my_depth_budget is not None and my_depth_budget < 1:
+            raise DepthLimitError(
+                root_id=request.root_id, call_hash=request.call.call_hash
+            )
         try:
             resp = await self._registry.codec.invoke_task(
                 request.call,
@@ -159,7 +172,16 @@ class AppWorker[C](AppConsumer[C]):
                 ActiveWorker(conn, self._registry, RootId(request.root_id)),
             )
         except Defer as e:
-            return e
+            deferred_calls = []
+            for dcall in e.calls:
+                deferred_calls.append(
+                    DeferredCall(
+                        topic=dcall.topic,
+                        call=dcall.call,
+                        depth_budget=my_depth_budget - 1 if my_depth_budget else None,
+                    )
+                )
+            return Defer(deferred_calls)
         return Response(payload=resp)
 
 

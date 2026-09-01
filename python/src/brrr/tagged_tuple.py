@@ -92,7 +92,7 @@ class PendingReturn(TaggedTuple):
     root_id: str
     call_hash: str
     topic: str
-    depth_limit: int | None = optional_field()
+    depth_budget: int | None = optional_field()
 
 
 @dataclass(frozen=True)
@@ -100,7 +100,7 @@ class ScheduleMessage(TaggedTupleStrings):
     tag = 4
     root_id: str
     call_hash: str
-    depth_limit: int | None = optional_field()
+    depth_budget: int | None = optional_field()
 
 
 def to_tagged_tuple_optional[T](val: T | None) -> tuple[T] | tuple[()]:

@@ -92,24 +92,24 @@ export class PendingReturn {
     "rootId",
     "callHash",
     "topic",
-    optionalField("depthLimit"),
+    optionalField("depthBudget"),
   ] as const;
 
   public readonly rootId: string;
   public readonly callHash: string;
   public readonly topic: string;
-  public readonly depthLimit: number | undefined;
+  public readonly depthBudget: number | undefined;
 
   constructor(
     rootId: string,
     callHash: string,
     topic: string,
-    depthLimit?: number,
+    depthBudget?: number,
   ) {
     this.rootId = rootId;
     this.callHash = callHash;
     this.topic = topic;
-    this.depthLimit = depthLimit;
+    this.depthBudget = depthBudget;
   }
 
   public isRepeatedCall(other: PendingReturn): boolean {
@@ -126,16 +126,16 @@ export class ScheduleMessage {
   public static readonly fields = [
     "rootId",
     "callHash",
-    optionalField("depthLimit"),
+    optionalField("depthBudget"),
   ] as const;
 
   public readonly rootId: string;
   public readonly callHash: string;
-  public readonly depthLimit: number | undefined;
+  public readonly depthBudget: number | undefined;
 
-  constructor(rootId: string, callHash: string, depthLimit?: number) {
+  constructor(rootId: string, callHash: string, depthBudget?: number) {
     this.rootId = rootId;
     this.callHash = callHash;
-    this.depthLimit = depthLimit;
+    this.depthBudget = depthBudget;
   }
 }
