@@ -1,6 +1,5 @@
 import asyncio
 import dataclasses
-import typing
 from collections import Counter
 from typing import Any, cast
 from unittest.mock import AsyncMock
@@ -152,9 +151,10 @@ async def _call_nested_gather(
     async def top(app: TestContext, xs: list[int]) -> list[int]:
         calls.append(f"top({xs})")
         gather = app.gather if use_brrr_gather else asyncio.gather
-        result = await gather(*[not_a_brrr_task(app, x) for x in xs])
-        typing.assert_type(result, list[int])
-        return result
+        result: list[int] | tuple[int, ...] = await gather(
+            *[not_a_brrr_task(app, x) for x in xs]
+        )
+        return list(result)
 
     handlers: dict[str, Task[TestContext, ..., Any]] = dict(
         times_two=times_two, minus_one=minus_one, top=top

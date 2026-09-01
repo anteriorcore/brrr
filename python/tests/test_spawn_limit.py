@@ -3,7 +3,9 @@ from collections import Counter
 import brrr
 import pytest
 from brrr import AppWorker, SpawnLimitError
+from brrr.app import Handler
 from brrr.backends.in_memory import CloseOnEmptyQueue, InMemoryByteStore
+from brrr.connection import DepthLimitError
 from brrr.demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
 
 from .parametrize import names
@@ -35,6 +37,59 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
             await conn.loop(topic, app.handle)
 
         assert n == conn._spawn_limit
+
+
+async def test_depth_limit(topic: str, task_name: str) -> None:
+    queue = CloseOnEmptyQueue([topic])
+    store = InMemoryByteStore()
+    n = 0
+    depth_limit = 10
+
+    async def foo(app: TestContext, a: int) -> int:
+        nonlocal n
+        n += 1
+        if a == 0:
+            # Prevent false positives from this test by exiting cleanly at some point
+            return 0
+        return await app.call(foo)(a - 1)
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={task_name: Handler(foo, depth_limit=depth_limit)},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(task_name, topic=topic)(depth_limit + 1)
+
+        with pytest.raises(DepthLimitError):
+            await conn.loop(topic, app.handle)
+
+        assert n == depth_limit
+
+
+async def test_depth_limit_not_reached(topic: str, task_name: str) -> None:
+    queue = CloseOnEmptyQueue([topic])
+    store = InMemoryByteStore()
+    n = 0
+    expected_num_calls = 10
+
+    async def foo(app: TestContext, a: int) -> int:
+        nonlocal n
+        n += 1
+        if a == 0:
+            # Prevent false positives from this test by exiting cleanly at some point
+            return 0
+        return await app.call(foo)(a - 1)
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={task_name: Handler(foo, depth_limit=expected_num_calls + 1)},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(task_name, topic=topic)(expected_num_calls)
+
+        await conn.loop(topic, app.handle)
 
 
 async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:

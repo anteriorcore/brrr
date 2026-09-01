@@ -21,6 +21,12 @@ export class CasRetryLimitReachedError extends BrrrError {
   }
 }
 
+export class DepthLimitError extends BrrrError {
+  public constructor(rootId: string, callHash: string) {
+    super(`Depth limit reached for rootId ${rootId} and callHash ${callHash}`);
+  }
+}
+
 export class SpawnLimitError extends BrrrError {
   public constructor(limit: number, rootId: string, callHash: string) {
     super(
@@ -44,7 +50,7 @@ export class TagMismatchError extends BrrrError {
 export class MalformedTaggedTupleError extends BrrrError {
   public constructor(clz: Tagged) {
     super(
-      `Malformed tagged tuple for ${clz.name}, expected ${clz.length} elements`,
+      `Malformed tagged tuple for ${clz.name}, expected ${clz.fields.length} elements`,
     );
   }
 }

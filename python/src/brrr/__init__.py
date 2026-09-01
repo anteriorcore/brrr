@@ -8,6 +8,9 @@ from .app import (
     AppWorker as AppWorker,
 )
 from .app import (
+    Handler as Handler,
+)
+from .app import (
     RootId as RootId,
 )
 from .app import (
@@ -21,6 +24,9 @@ from .connection import (
 )
 from .connection import (
     DeferredCall as DeferredCall,
+)
+from .connection import (
+    DepthLimitError as DepthLimitError,
 )
 from .connection import (
     Request as Request,
@@ -40,6 +46,10 @@ from .connection import (
 from .connection import (
     serve as serve,
 )
-from .queue import Message as Message
-from .queue import QueueIsClosed as QueueIsClosed
+from .queue import (
+    Message as Message,
+)
+from .queue import (
+    QueueIsClosed as QueueIsClosed,
+)
 from .store import NotFoundError as NotFoundError

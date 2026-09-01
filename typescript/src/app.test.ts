@@ -4,8 +4,10 @@ import {
   ActiveWorker,
   AppConsumer,
   AppWorker,
+  Handler,
   type Handlers,
   type Task,
+  wrapAllInHandlers,
 } from "./app.ts";
 import {
   type Connection,
@@ -67,7 +69,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     strictEqual(result, 15);
   }
 
-  const handlers: Handlers<TestContext> = { bar, foo };
+  const handlers: Handlers<TestContext> = wrapAllInHandlers({ bar, foo });
 
   function waitFor(call: Call, predicate?: () => Promise<void>): Promise<void> {
     return new Promise((resolve) => {
@@ -164,7 +166,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const localBrrr = new LocalBrrr(topic, {
         codec,
-        handlers: { foo, bar, top },
+        handlers: wrapAllInHandlers({ foo, bar, top }),
       });
       await localBrrr.run(top)([3, 4]);
       return calls;
@@ -255,7 +257,10 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       return results.reduce((sum, val) => sum + val);
     }
 
-    const brrr = new LocalBrrr(topic, { codec, handlers: { foo } });
+    const brrr = new LocalBrrr(topic, {
+      codec,
+      handlers: wrapAllInHandlers({ foo }),
+    });
     await brrr.run(foo)(3);
 
     deepStrictEqual(Object.fromEntries(calls), { 0: 1, 1: 2, 2: 2, 3: 2 });
@@ -279,7 +284,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
     const brrr = new LocalBrrr(topic, {
       codec,
-      handlers: { one, foo },
+      handlers: wrapAllInHandlers({ one, foo }),
     });
     await brrr.run(foo)(50);
 
@@ -299,8 +304,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     }
 
     const worker = new AppWorker(codec, server, {
-      "quux/zim": foo,
-      "quux/bar": bar,
+      "quux/zim": new Handler(foo),
+      "quux/bar": new Handler(bar),
     });
     const localApp = new LocalApp(topic, server, worker);
     localApp.run();
@@ -346,7 +351,10 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       }
 
       const server = new Server(store, cache, publisher);
-      const app = new AppWorker(codec, server, { ...handlers, foo });
+      const app = new AppWorker(codec, server, {
+        ...handlers,
+        foo: new Handler(foo),
+      });
 
       await app.schedule(foo, topic)(122);
 
@@ -363,7 +371,10 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       }
 
       const server = new Server(store, cache, publisher);
-      const app = new AppWorker(codec, server, { ...handlers, foo });
+      const app = new AppWorker(codec, server, {
+        ...handlers,
+        foo: new Handler(foo),
+      });
 
       const root_id = await app.schedule(foo, topic)(4);
       notStrictEqual(root_id, undefined);
@@ -407,7 +418,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const app = new AppWorker(codec, server, {
         ...handlers,
-        foo,
+        foo: new Handler(foo),
       });
 
       while (true) {
@@ -446,8 +457,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       const app = new AppWorker(codec, server, {
         ...handlers,
-        foo,
-        bar,
+        foo: new Handler(foo),
+        bar: new Handler(bar),
       });
 
       while (true) {
@@ -486,7 +497,10 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       }
 
       const codec = new DemoJsonCodec({ stringify, parse });
-      const app = new AppWorker(codec, server, { fib, top });
+      const app = new AppWorker(codec, server, {
+        fib: new Handler(fib, 1000),
+        top: new Handler(top, 1000),
+      });
       await app.schedule(top, topic)();
 
       await Promise.all(
@@ -531,6 +545,29 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(await app.read(foo)(4), 14);
     });
 
+    await suite("depth limit", async () => {
+      await test("cant surpass depth limit", async () => {
+        let n = 0;
+        const depthLimit = 10;
+
+        async function recurse(app: TestContext, a: number): Promise<number> {
+          n++;
+          if (a === 0) {
+            return 0;
+          }
+          return app.call(recurse)(a - 1);
+        }
+
+        const server = new Server(store, cache, publisher);
+        const app = new AppWorker(codec, server, {
+          recurse: new Handler(recurse, depthLimit),
+        });
+        await app.schedule(recurse, topic)(depthLimit + 10);
+        await rejects(server.loop(topic, app.handle, flusher));
+        strictEqual(n, depthLimit);
+      });
+    });
+
     await suite("spawn limit", async () => {
       await test("spawn limit depth", async () => {
         let n = 0;
@@ -549,7 +586,9 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           value: 100,
         });
 
-        const app = new AppWorker(codec, server, { foo });
+        const app = new AppWorker(codec, server, {
+          foo: new Handler(foo, 1000),
+        });
         await app.schedule(foo, topic)(server.spawnLimit + 3);
 
         await rejects(server.loop(topic, app.handle, flusher));

@@ -65,7 +65,7 @@ async def test_memory_cas() -> None:
 )
 async def test_encode_decode_mixed_cases(scheduled_at: int, returns: set[str]) -> None:
     def make_pr(tag: str) -> PendingReturn:
-        return PendingReturn(root_id=tag, call_hash=tag, topic=tag)
+        return PendingReturn(root_id=tag, call_hash=tag, topic=tag, depth_budget=10)
 
     pending_returns = PendingReturns(
         scheduled_at=scheduled_at, returns=set(map(make_pr, returns))

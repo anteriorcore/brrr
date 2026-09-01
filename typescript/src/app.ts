@@ -6,7 +6,7 @@ import {
   type Response,
 } from "./connection.ts";
 import type { Codec } from "./codec.ts";
-import { NotFoundError, TaskNotFoundError } from "./errors.ts";
+import { DepthLimitError, NotFoundError, TaskNotFoundError } from "./errors.ts";
 
 export type Task<C, A extends unknown[] = any[], R = any> = NoContextTask<
   [C, ...A],
@@ -17,7 +17,26 @@ export type NoContextTask<A extends unknown[] = any[], R = any> = (
   ...args: A
 ) => R | Promise<R>;
 
-export type Handlers<C> = Readonly<Record<string, Task<C, any[], any>>>;
+export class Handler<C> {
+  public readonly task: Task<C, any[], any>;
+  // Undefined means unlimited depth
+  public readonly depthLimit: number | undefined;
+
+  public constructor(task: Task<C, any[], any>, depthLimit?: number) {
+    this.task = task;
+    this.depthLimit = depthLimit;
+  }
+}
+
+export function wrapAllInHandlers<
+  C,
+  T extends Record<string, (...args: any[]) => any>,
+>(fns: T): { [K in keyof T]: Handler<C> } {
+  return Object.fromEntries(
+    Object.entries(fns).map(([k, fn]) => [k, new Handler(fn)]),
+  ) as { [K in keyof T]: Handler<C> };
+}
+export type Handlers<C> = Readonly<Record<string, Handler<C>>>;
 
 export type Registry<C> = {
   codec: Codec<C>;
@@ -34,7 +53,7 @@ export function taskIdentifierToName(
     return identifier;
   }
   for (const [name, handler] of Object.entries(handlers)) {
-    if (handler === identifier) {
+    if (handler.task === identifier) {
       return name;
     }
   }
@@ -48,15 +67,25 @@ export class AppConsumer<C> {
   public constructor(
     codec: Codec<C>,
     connection: Connection,
-    handlers: Handlers<C> = {},
+    handlers: Readonly<Record<string, Handler<C> | Task<C, any[], any>>> = {},
   ) {
     this.connection = connection;
-    this.registry = { codec, handlers };
+
+    const hydrated_handlers = Object.fromEntries(
+      Object.entries(handlers).map(([name, task_or_handler]) => [
+        name,
+        task_or_handler instanceof Handler
+          ? task_or_handler
+          : new Handler(task_or_handler),
+      ]),
+    ) as Handlers<C>;
+    this.registry = { codec, handlers: hydrated_handlers };
   }
 
   public schedule<A extends unknown[], R>(
     taskIdentifier: TaskIdentifier<C, A, R>,
     topic: string,
+    depthLimit?: number,
   ): (...args: A) => Promise<string | undefined> {
     const taskName = taskIdentifierToName(
       taskIdentifier,
@@ -64,7 +93,7 @@ export class AppConsumer<C> {
     );
     return async (...args: A): Promise<string | undefined> => {
       const call = await this.registry.codec.encodeCall(taskName, args);
-      return await this.connection.scheduleRaw(topic, call);
+      return await this.connection.scheduleRaw(topic, call, depthLimit);
     };
   }
 
@@ -98,16 +127,35 @@ export class AppWorker<C> extends AppConsumer<C> {
     if (!handler) {
       throw new TaskNotFoundError(request.call.taskName);
     }
+    let myDepthBudget: number | undefined;
+    if (request.depthBudget !== undefined && handler.depthLimit !== undefined) {
+      myDepthBudget = Math.min(request.depthBudget, handler.depthLimit);
+    } else {
+      myDepthBudget =
+        request.depthBudget !== undefined
+          ? request.depthBudget
+          : handler.depthLimit;
+    }
+    if (myDepthBudget !== undefined && myDepthBudget < 1)
+      throw new DepthLimitError(request.rootId, request.call.callHash);
     try {
       const payload = await this.registry.codec.invokeTask(
         request.call,
-        handler,
+        handler.task,
         new ActiveWorker(connection, this.registry),
       );
       return { payload };
     } catch (err) {
       if (err instanceof Defer) {
-        return err;
+        const deferredCalls = err.calls.map((dcall) => {
+          return {
+            topic: dcall.topic,
+            call: dcall.call,
+            depthBudget:
+              myDepthBudget !== undefined ? myDepthBudget - 1 : undefined,
+          };
+        });
+        return new Defer(...deferredCalls);
       }
       throw err;
     }
@@ -135,7 +183,7 @@ export class ActiveWorker<C> {
       const call = await this.registry.codec.encodeCall(taskName, args);
       const payload = await this.connection.memory.getValue(call.callHash);
       if (!payload) {
-        throw new Defer({ topic, call });
+        throw new Defer({ topic, call, depthBudget: undefined });
       }
       return this.registry.codec.decodeReturn(taskName, payload) as R;
     };

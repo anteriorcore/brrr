@@ -6,6 +6,12 @@ import bencodepy
 
 _bc = bencodepy.Bencode(encoding="utf-8")
 
+OPTIONAL_FLAG_NAME = "tt_optional"
+
+
+def optional_field[T]() -> Any:
+    return dataclasses.field(default=None, metadata={OPTIONAL_FLAG_NAME: True})
+
 
 @dataclass(frozen=True)
 class TaggedTuple:
@@ -32,13 +38,41 @@ class TaggedTuple:
     tag: ClassVar[int]
 
     def astuple(self) -> tuple[Any, ...]:
-        return (self.tag,) + dataclasses.astuple(self)
+        # Optionals are encoded as a 0- or 1-element lists: bencode has no null support
+        def enc(field: dataclasses.Field[Any], val: Any) -> Any:
+            if field.metadata.get(OPTIONAL_FLAG_NAME):
+                return to_tagged_tuple_optional(val)
+            return val
+
+        return (self.tag,) + tuple(
+            enc(field, getattr(self, field.name)) for field in dataclasses.fields(self)
+        )
 
     @classmethod
     def fromtuple(cls, t: tuple[Any, ...]) -> Self:
         if t[0] != cls.tag:
             raise ValueError(f"{cls.__name__} decode tag mismatch: {t[0]} != {cls.tag}")
-        return cls(*t[1:])
+        if len(t) - 1 != len(dataclasses.fields(cls)):
+            raise ValueError(
+                f"{cls.__name__} incorrect number of fields: {len(dataclasses.fields(cls))} vs {len(t) - 1}"
+            )
+
+        def dec(field: dataclasses.Field[Any], val: Any) -> Any:
+            if not field.metadata.get(OPTIONAL_FLAG_NAME):
+                return val
+            match list(val):
+                case []:
+                    return None
+                case [bare_val]:
+                    return bare_val
+                case _:
+                    raise ValueError(
+                        f"malformed optional field: {cls.__name__}.{field.name} = {val}"
+                    )
+
+        return cls(
+            *(dec(field, val) for field, val in zip(dataclasses.fields(cls), t[1:]))
+        )
 
 
 @dataclass(frozen=True)
@@ -54,14 +88,22 @@ class TaggedTupleStrings(TaggedTuple):
 
 @dataclass(frozen=True)
 class PendingReturn(TaggedTuple):
-    tag = 1
+    tag = 3
     root_id: str
     call_hash: str
     topic: str
+    depth_budget: int | None = optional_field()
 
 
 @dataclass(frozen=True)
 class ScheduleMessage(TaggedTupleStrings):
-    tag = 2
+    tag = 4
     root_id: str
     call_hash: str
+    depth_budget: int | None = optional_field()
+
+
+def to_tagged_tuple_optional[T](val: T | None) -> tuple[T] | tuple[()]:
+    if val is None:
+        return ()
+    return (val,)

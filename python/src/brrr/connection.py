@@ -29,11 +29,22 @@ logger = logging.getLogger(__name__)
 class SpawnLimitError(Exception): ...
 
 
+class DepthLimitError(Exception):
+    def __init__(self, root_id: str, call_hash: str) -> None:
+        self.root_id = root_id
+        self.call_hash = call_hash
+        super().__init__(f"Depth limit exceeded: {root_id=} {call_hash=}")
+
+
+DEFAULT_SPAWN_LIMIT = 10_000
+
+
 @dataclass
 class DeferredCall:
     # None means self
     topic: str | None
     call: Call
+    depth_budget: int | None = None
 
 
 class Defer(Exception):
@@ -56,11 +67,8 @@ class Request:
     # schedule operation.  Every “schedule” gets a new root id, regardless of
     # the call parameters, regardless of cache availability.
     root_id: str
-    # Probably some extra useful out-of-band metadata at some point?  Something
-    # like "headers"?  Metadata?  For now we only have calls in a request, but
-    # it’s very likely we’ll want to add things here very soon and this is part
-    # of the public API, so let’s wrap the call itself in a single-member
-    # Request class.
+    # How many further calls can be made on this branch
+    depth_budget: int | None = None
 
 
 @dataclass
@@ -108,7 +116,7 @@ class Connection:
     # certainly have a pathological workflow edge case causing massive reruns.  If
     # you actually need to increase this because your flows genuinely hit this
     # limit, I’m impressed.
-    _spawn_limit: int = 10_000
+    _spawn_limit: int = DEFAULT_SPAWN_LIMIT
 
     # Non-critical, non-persistent information.  Still figuring out if it makes
     # sense to have this dichotomy supported so explicitly at the top-level of
@@ -147,7 +155,12 @@ class Connection:
         await self._queue.put_message(topic, job.encode().decode("utf-8"))
 
     async def schedule_raw(
-        self, topic: str, idempotency_key: str, task_name: str, payload: bytes
+        self,
+        topic: str,
+        idempotency_key: str,
+        task_name: str,
+        payload: bytes,
+        depth_limit: int | None = None,
     ) -> str | None:
         """Schedule this call on the brrr workforce.
 
@@ -167,6 +180,7 @@ class Connection:
         job = ScheduleMessage(
             call_hash=idempotency_key,
             root_id=root_id,
+            depth_budget=depth_limit,
         )
         await self._put_job(topic, job)
         return root_id
@@ -201,7 +215,11 @@ class Server(Connection):
         Server._total_workers += 1
 
     async def _schedule_return_call(self, ret: PendingReturn) -> None:
-        job = ScheduleMessage(root_id=ret.root_id, call_hash=ret.call_hash)
+        job = ScheduleMessage(
+            root_id=ret.root_id,
+            call_hash=ret.call_hash,
+            depth_budget=ret.depth_budget,
+        )
         await self._put_job(ret.topic, job)
 
     async def _schedule_call_nested(
@@ -241,12 +259,14 @@ class Server(Connection):
             root_id=parent.root_id,
             call_hash=parent.call_hash,
             topic=my_topic,
+            depth_budget=parent.depth_budget,
         )
         should_schedule = await self._memory.add_pending_return(call_hash, ret)
         if should_schedule:
             job = ScheduleMessage(
                 call_hash=call_hash,
                 root_id=parent.root_id,
+                depth_budget=child.depth_budget,
             )
             await self._put_job(child_topic, job)
 
@@ -296,7 +316,7 @@ class Server(Connection):
         logger.debug(
             f"Calling {my_topic} -> {msg.root_id}/{msg.call_hash} -> {call.task_name}"
         )
-        req = Request(call=call, root_id=msg.root_id)
+        req = Request(call=call, root_id=msg.root_id, depth_budget=msg.depth_budget)
         ret = await handler(req, self)
         if isinstance(ret, Defer):
             logger.debug(f"Deferring {msg.root_id}/{msg.call_hash}: {call.task_name}")
@@ -326,13 +346,6 @@ class Server(Connection):
             # value.
             await self._memory.set_value(msg.call_hash, ret.payload)
 
-            # This is ugly and it’s tempting to use asyncio.gather with
-            # ‘return_exceptions=True’.  However note I don’t want to blanket catch
-            # all errors: only SpawnLimitError.  You’d need to do manual filtering
-            # of errors, check if there are any non-spawnlimiterrors, if so throw
-            # those immediately from the context block, otherwise throw a spawnlimit
-            # error once the context finishes.  It’s about as convoluted as just
-            # doing it this way, without any of the clarity.
             return await self._schedule_returns(msg)
 
         else:
