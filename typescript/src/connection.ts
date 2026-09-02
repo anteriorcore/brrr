@@ -19,6 +19,15 @@ export class Defer {
   }
 }
 
+/**
+ * When a task is called and should no longer be computed, an Abandon exception
+ * is raised. Workers catch this exception and do not reschedule the task or any
+ * parent tasks. For instance, this can be used to end a task tree without
+ * killing the worker if incorrect input is received or some other unrecoverable
+ * error occurs.
+ *
+ * <docsync>Abandon</docsync>
+ */
 export class Abandon {}
 
 export interface Request {

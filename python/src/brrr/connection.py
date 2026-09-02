@@ -55,6 +55,8 @@ class Abandon(Exception):
     parent tasks. For instance, this can be used to end a task tree without
     killing the worker if incorrect input is received or some other unrecoverable
     error occurs.
+
+    <docsync>Abandon</docsync>
     """
 
 
