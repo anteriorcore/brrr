@@ -133,7 +133,6 @@ class CloseOnSilenceQueue(Queue):
         q = self._queues[topic]
         try:
             payload = await q.get()
-            await asyncio.sleep(0)
         except asyncio.QueueShutDown:
             raise QueueIsClosed()
 
@@ -143,7 +142,6 @@ class CloseOnSilenceQueue(Queue):
     @typing.override
     async def put_message(self, topic: str, body: str) -> None:
         self._kick_watchdog()
-        await asyncio.sleep(0)
         await self._queues[topic].put(body)
 
     def _shutdown(self) -> None:

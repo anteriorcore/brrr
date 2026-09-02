@@ -89,12 +89,17 @@ export class AppConsumer<C> {
     };
   }
 
+  /**
+   * Set a signal for this root_id.
+   *
+   * The signal is raw bytes and will be interpreted by the codec. This can be
+   * considered global to all tasks under the rootId. This is not set using CAS
+   * so it is racy if multiple consumers try setting it for the same root_id.
+   *
+   * <docsync>set_signal</docsync>
+   */
   public async setSignal(rootId: string, signal: Uint8Array): Promise<void> {
     await this.connection.setSignal(rootId, signal);
-  }
-
-  public async clearSignal(rootId: string): Promise<void> {
-    await this.connection.clearSignal(rootId);
   }
 }
 

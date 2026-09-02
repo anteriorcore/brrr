@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock
 import brrr
 import pytest
 from brrr import (
-    ActiveWorker,
     Abandon,
+    ActiveWorker,
     AppConsumer,
     AppWorker,
     Connection,
@@ -27,7 +27,6 @@ from brrr.backends.in_memory import (
 )
 from brrr.call import Call
 from brrr.codec import Codec
-from brrr.connection import Abandon
 from brrr.demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
 from brrr.local_app import LocalBrrr, local_app
 
@@ -770,7 +769,8 @@ async def test_app_root_id(topic: str) -> None:
 async def test_cancel_task(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = CloseOnEmptyQueue([topic])
-    CANCEL_SIGNAL = b"CANCEL"
+    # arbitrarily chosen
+    CANCEL_SIGNAL = b"Cancel now please"
 
     class CancelCodec(DemoPickleCodec):
         async def invoke_task(

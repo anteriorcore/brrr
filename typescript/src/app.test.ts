@@ -766,7 +766,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       },
     };
     const server = new Server(store, cache, publisher);
-    const SIGINT = Uint8Array.of(10);
+    // arbitrarily chose stop sign in utf8
+    const SIGINT = Uint8Array.of(0xf0, 0x9f, 0x9b, 0x91);
 
     class CancelCodec extends DemoJsonCodec {
       override async invokeTask<A extends unknown[], R>(

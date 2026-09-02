@@ -17,12 +17,11 @@ import aioboto3
 import brrr
 import redis.asyncio as redis
 from aiohttp import web
-from brrr import ActiveWorker, AppWorker, NotFoundError
+from brrr import Abandon, ActiveWorker, AppWorker, NotFoundError
 from brrr.backends.dynamo import DynamoDbMemStore
 from brrr.backends.redis import RedisQueue
 from brrr.call import Call
 from brrr.codec import Codec
-from brrr.connection import Abandon
 from types_aiobotocore_dynamodb import DynamoDBClient
 
 logger = logging.getLogger(__name__)

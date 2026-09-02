@@ -105,12 +105,13 @@ class AppConsumer[C]:
     async def set_signal(self, root_id: str, signal: bytes) -> None:
         """Set a signal for this root_id.
 
-        The signal is raw bytes and will be interpreted by the codec."""
-        await self._connection.set_signal(root_id, signal)
+        The signal is raw bytes and will be interpreted by the codec. This can be
+        considered global to all tasks under the rootId. This is not set using CAS
+        so it is racy if multiple consumers try setting it for the same root_id.
 
-    async def clear_signal(self, root_id: str) -> None:
-        """Clear the signal for this root_id."""
-        await self._connection.clear_signal(root_id)
+        <docsync>set_signal</docsync>
+        """
+        await self._connection.set_signal(root_id, signal)
 
 
 class AppWorker[C](AppConsumer[C]):
@@ -225,9 +226,9 @@ class ActiveWorker[C]:
     async def gather(self, *task_awaitables: Awaitable[Any]) -> Sequence[Any]:  # type: ignore[misc]
         """
         Takes a number of task lambdas and calls each of them.
-        If they've all been computed, return their values,
-        Otherwise raise jobs for those that haven't been computed
-        or if each child should be abandoned.
+
+        If they've all been computed, return their values, otherwise raise
+        Defers for those that haven't been computed.
         """
         return await _gather(task_awaitables)
 
