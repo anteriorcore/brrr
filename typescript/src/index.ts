@@ -11,6 +11,7 @@ export type { Codec } from "./codec.ts";
 export {
   Server,
   SubscriberServer,
+  Abandon,
   Connection,
   Defer,
   type DeferredCall,

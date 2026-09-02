@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import brrr
 import pytest
 from brrr import (
+    Abandon,
     AppConsumer,
     AppWorker,
     Connection,
@@ -85,6 +86,33 @@ async def test_app_worker_no_reschedule_cached(topic: str) -> None:
         assert empty_root_id is None
         await conn.loop(topic, app.handle)
         assert len(calls) == 1
+
+
+async def test_app_worker_abandon(topic: str) -> None:
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue([topic])
+
+    async def fib(app: TestContext, a: int) -> int:
+        if a == 1:
+            return 1
+        if a == 0:
+            return 0
+        if a < 0:
+            raise Abandon()
+        return sum(await app.gather(app.call(fib)(a - 1), app.call(fib)(a - 2)))
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker[TestContext](
+            handlers={"fib": fib},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(fib, topic=topic)(4)
+        await app.schedule(fib, topic=topic)(-4)
+        await conn.loop(topic, app.handle)
+        assert await app.read(fib)(4) == 3
+        with pytest.raises(NotFoundError):
+            await app.read(fib)(-4)
 
 
 async def test_app_consumer(topic: str, task_name: str) -> None:

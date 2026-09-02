@@ -14,7 +14,7 @@ from typing import Any, Concatenate, Final, NewType, assert_never, overload
 from brrr.store import NotFoundError
 
 from .codec import Codec
-from .connection import Connection, Defer, DeferredCall, Request, Response
+from .connection import Abandon, Connection, Defer, DeferredCall, Request, Response
 
 type Task[C, **P, R] = Callable[Concatenate[C, P], Awaitable[R]]
 
@@ -102,7 +102,9 @@ class AppConsumer[C]:
 
 
 class AppWorker[C](AppConsumer[C]):
-    async def handle(self, request: Request, conn: Connection) -> Response | Defer:
+    async def handle(
+        self, request: Request, conn: Connection
+    ) -> Response | Defer | Abandon:
         """Glue between this class and the underlying Connection.loop handler"""
         task_name = request.call.task_name
         handler = self._registry.handlers[task_name]
@@ -112,7 +114,7 @@ class AppWorker[C](AppConsumer[C]):
                 handler,
                 ActiveWorker(conn, self._registry, RootId(request.root_id)),
             )
-        except Defer as e:
+        except (Defer, Abandon) as e:
             return e
         return Response(payload=resp)
 

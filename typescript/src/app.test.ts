@@ -8,6 +8,7 @@ import {
   type Task,
 } from "./app.ts";
 import {
+  Abandon,
   type Connection,
   Defer,
   type Request,
@@ -376,6 +377,26 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(calls.length, 1);
     });
 
+    await test("abandon", async () => {
+      async function fib(app: TestContext, n: number): Promise<number> {
+        if (n == 0) return 0;
+        if (n == 1) return 1;
+        if (n < 0) throw new Abandon();
+        return (
+          await app.gather(app.call(fib)(n - 1), app.call(fib)(n - 2))
+        ).reduce((acc: number, curr: number) => acc + curr, 0);
+      }
+
+      const server = new Server(store, cache, publisher);
+      const app = new AppWorker(codec, server, { ...handlers, fib });
+
+      await app.schedule(fib, topic)(4);
+      await app.schedule(fib, topic)(-4);
+      await server.loop(topic, app.handle, flusher);
+      strictEqual(await app.read(fib)(4), 3);
+      await rejects(app.read(fib)(-4), NotFoundError);
+    });
+
     await test("loop with no tasks", async () => {
       const app = new AppWorker(codec, server, handlers);
 
@@ -511,7 +532,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         public readonly myHandle = async (
           request: Request,
           connection: Connection,
-        ): Promise<Response | Defer> => {
+        ): Promise<Response | Defer | Abandon> => {
           const response = await this.handle(request, connection);
           if (response instanceof Defer) {
             for (const deferredCall of response.calls) {
