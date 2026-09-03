@@ -60,7 +60,7 @@ await suite(import.meta.filename, async () => {
       pendingReturns: {
         key: {
           type: "pending_returns",
-          callHash: "test-pending-return-hash",
+          id: "test-pending-return-hash",
         } satisfies MemKey,
       },
       newReturn: new PendingReturn("some-root", "some-parent", "some-topic"),
@@ -143,7 +143,7 @@ await suite(import.meta.filename, async () => {
         // ensure all returns are stored
         const encoded = await store.get({
           type: "pending_returns",
-          callHash: hash,
+          id: hash,
         });
         deepStrictEqual(
           PendingReturns.decode(encoded!).encodedReturns,
@@ -159,7 +159,7 @@ await suite(import.meta.filename, async () => {
         ok(shouldSchedule);
         const raw = await store.get({
           type: "pending_returns",
-          callHash: fixture.call.callHash,
+          id: fixture.call.callHash,
         });
         ok(raw);
         const decoded = PendingReturns.decode(raw);
@@ -183,7 +183,7 @@ await suite(import.meta.filename, async () => {
         ok(!shouldSchedule);
         const raw = await store.get({
           type: "pending_returns",
-          callHash: fixture.call.callHash,
+          id: fixture.call.callHash,
         });
         ok(raw);
         const decoded = PendingReturns.decode(raw);
@@ -210,7 +210,7 @@ await suite(import.meta.filename, async () => {
         ok(!shouldSchedule);
         const raw = await store.get({
           type: "pending_returns",
-          callHash: fixture.call.callHash,
+          id: fixture.call.callHash,
         });
         ok(raw);
         const decoded = PendingReturns.decode(raw);
@@ -237,7 +237,7 @@ await suite(import.meta.filename, async () => {
         ok(shouldSchedule);
         const raw = await store.get({
           type: "pending_returns",
-          callHash: fixture.call.callHash,
+          id: fixture.call.callHash,
         });
         ok(raw);
         const decoded = PendingReturns.decode(raw);
@@ -283,7 +283,7 @@ await suite(import.meta.filename, async () => {
         ]);
         await store.set(fixture.pendingReturns.key, pendingReturns.encode());
         await memory.withPendingReturnsRemove(
-          fixture.pendingReturns.key.callHash,
+          fixture.pendingReturns.key.id,
           (returns) => {
             deepStrictEqual(
               [...returns].map((it) => TaggedTuple.encodeToString(it)),
@@ -304,7 +304,7 @@ await suite(import.meta.filename, async () => {
         );
         await store.set(fixture.pendingReturns.key, pendingReturns.encode());
         await memory.withPendingReturnsRemove(
-          fixture.pendingReturns.key.callHash,
+          fixture.pendingReturns.key.id,
           unstableFn,
         );
         // The first time we call the mock function we use pendingReturn1 but while that happens,
@@ -331,12 +331,12 @@ export async function storeContractTest(
     const fixture = {
       key: {
         type: "call",
-        callHash: "test-call-hash",
+        id: "test-id",
       } satisfies MemKey,
       value: new Uint8Array([1, 2, 3, 4, 5]),
       otherKey: {
         type: "call",
-        callHash: "other-test-call-hash",
+        id: "other-test-id",
       },
     } as const;
 
@@ -361,7 +361,7 @@ export async function storeContractTest(
       await resource.store.set(fixture.key, fixture.value);
       const newKey: MemKey = {
         type: "call",
-        callHash: "new-call-hash",
+        id: "new-call-hash",
       };
       const newValue = new Uint8Array([6, 7, 8, 9, 10]);
       await resource.store.set(newKey, newValue);

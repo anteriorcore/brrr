@@ -63,7 +63,7 @@ export class PendingReturns {
 
 export interface MemKey {
   readonly type: "pending_returns" | "call" | "value";
-  readonly callHash: string;
+  readonly id: string;
 }
 
 export interface Store {
@@ -134,7 +134,7 @@ export class Memory {
   public async getCall(callHash: string): Promise<Call> {
     const memKey: MemKey = {
       type: "call",
-      callHash,
+      id: callHash,
     };
     const encoded = await this.store.getWithRetry(memKey);
     if (!encoded) {
@@ -159,7 +159,7 @@ export class Memory {
     await this.store.set(
       {
         type: "call",
-        callHash: call.callHash,
+        id: call.callHash,
       },
       encoded,
     );
@@ -168,14 +168,14 @@ export class Memory {
   public async hasValue(callHash: string): Promise<boolean> {
     return this.store.has({
       type: "value",
-      callHash,
+      id: callHash,
     });
   }
 
   public async getValue(callHash: string): Promise<Uint8Array | undefined> {
     return this.store.get({
       type: "value",
-      callHash,
+      id: callHash,
     });
   }
 
@@ -183,7 +183,7 @@ export class Memory {
     await this.store.set(
       {
         type: "value",
-        callHash,
+        id: callHash,
       },
       payload,
     );
@@ -195,7 +195,7 @@ export class Memory {
   ): Promise<boolean> {
     const memKey: MemKey = {
       type: "pending_returns",
-      callHash,
+      id: callHash,
     };
     let shouldSchedule = false;
     await this.withCas(async () => {
@@ -236,7 +236,7 @@ export class Memory {
   ) {
     const memKey: MemKey = {
       type: "pending_returns",
-      callHash,
+      id: callHash,
     };
     const handled = new Set<string>();
     return this.withCas(async () => {
