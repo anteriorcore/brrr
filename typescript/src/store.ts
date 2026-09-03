@@ -62,7 +62,7 @@ export class PendingReturns {
 }
 
 export interface MemKey {
-  readonly type: "pending_returns" | "call" | "value";
+  readonly type: "pending_returns" | "call" | "value" | "signal";
   readonly callHash: string;
 }
 
@@ -134,7 +134,7 @@ export class Memory {
   public async getCall(callHash: string): Promise<Call> {
     const memKey: MemKey = {
       type: "call",
-      callHash,
+      callHash: callHash,
     };
     const encoded = await this.store.getWithRetry(memKey);
     if (!encoded) {
@@ -168,14 +168,14 @@ export class Memory {
   public async hasValue(callHash: string): Promise<boolean> {
     return this.store.has({
       type: "value",
-      callHash,
+      callHash: callHash,
     });
   }
 
   public async getValue(callHash: string): Promise<Uint8Array | undefined> {
     return this.store.get({
       type: "value",
-      callHash,
+      callHash: callHash,
     });
   }
 
@@ -183,7 +183,7 @@ export class Memory {
     await this.store.set(
       {
         type: "value",
-        callHash,
+        callHash: callHash,
       },
       payload,
     );
@@ -195,7 +195,7 @@ export class Memory {
   ): Promise<boolean> {
     const memKey: MemKey = {
       type: "pending_returns",
-      callHash,
+      callHash: callHash,
     };
     let shouldSchedule = false;
     await this.withCas(async () => {
@@ -236,7 +236,7 @@ export class Memory {
   ) {
     const memKey: MemKey = {
       type: "pending_returns",
-      callHash,
+      callHash: callHash,
     };
     const handled = new Set<string>();
     return this.withCas(async () => {
@@ -265,5 +265,19 @@ export class Memory {
       }
     }
     throw new CasRetryLimitReachedError(Memory.casRetryLimit);
+  }
+
+  public async setSignal(rootId: string, signal: Uint8Array): Promise<void> {
+    return await this.store.set({ type: "signal", callHash: rootId }, signal);
+  }
+
+  public async getSignal(rootId: string): Promise<Uint8Array> {
+    const signal = await this.store.get({ type: "signal", callHash: rootId });
+    if (!signal) return new Uint8Array(0);
+    return signal;
+  }
+
+  public async clearSignal(rootId: string): Promise<void> {
+    await this.store.delete({ type: "signal", callHash: rootId });
   }
 }

@@ -9,6 +9,7 @@ import brrr
 import pytest
 from brrr import (
     Abandon,
+    ActiveWorker,
     AppConsumer,
     AppWorker,
     Connection,
@@ -180,9 +181,11 @@ async def _call_nested_gather(
     async def top(app: TestContext, xs: list[int]) -> list[int]:
         calls.append(f"top({xs})")
         gather = app.gather if use_brrr_gather else asyncio.gather
-        result = await gather(*[not_a_brrr_task(app, x) for x in xs])
-        typing.assert_type(result, list[int])
-        return result
+        result: list[int] | tuple[int, ...] = await gather(
+            *[not_a_brrr_task(app, x) for x in xs]
+        )
+        typing.assert_type(result, list[int] | tuple[int, ...])
+        return list(result)
 
     handlers: dict[str, Task[TestContext, ..., Any]] = dict(
         times_two=times_two, minus_one=minus_one, top=top
@@ -679,8 +682,10 @@ async def test_app_subclass(topic: str) -> None:
     # Hijack any defers and change them to a different task.  Just to prove a
     # point about middleware, nothing particularly realistic.
     class MyAppWorker(AppWorker[TestContext]):
-        async def handle(self, request: Request, conn: Connection) -> Response | Defer:
-            resp = await super().handle(request, conn)
+        async def handle(
+            self, request: Request, conn: Connection, signal: bytes
+        ) -> Response | Defer:
+            resp = await super().handle(request, conn, signal)
             if isinstance(resp, Response):
                 return resp
 
@@ -715,7 +720,7 @@ async def test_custom_context(topic: str) -> None:
             return Call(task_name=task_name, payload=b"", call_hash=task_name)
 
         async def invoke_task(
-            self, call: Call, handler: Any, active_worker: Any
+            self, call: Call, handler: Any, active_worker: Any, signal: bytes
         ) -> bytes:
             result: str = await handler(call.task_name)
             return result.encode("utf-8")
@@ -759,3 +764,55 @@ async def test_app_root_id(topic: str) -> None:
         await conn.loop(topic, app.handle)
         # Ensure that it exists at all
         assert await app.read(foo)()
+
+
+async def test_cancel_task(topic: str, task_name: str) -> None:
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue([topic])
+    # arbitrarily chosen
+    CANCEL_SIGNAL = b"Cancel now please"
+
+    class CancelCodec(DemoPickleCodec):
+        async def invoke_task(
+            self,
+            call: Call,
+            task: Task[DemoPickleCodecContext, ..., Any],
+            active_worker: ActiveWorker[DemoPickleCodecContext],
+            signal: bytes,
+        ) -> bytes:
+            if signal == CANCEL_SIGNAL:
+                raise Abandon
+            return await super().invoke_task(call, task, active_worker, signal)
+
+    name_foo_and_bar, name_foo, name_bar = names(
+        task_name, ("foo_and_bar", "foo", "bar")
+    )
+    calls = []
+
+    async def foo_and_bar(app: TestContext, a: int) -> int:
+        # intentionally sequential rather than gather for simplicity
+        calls.append(f"foo_and_bar({a})")
+        return await app.call(foo)(a) + await app.call(bar)(a)
+
+    async def foo(app: TestContext, a: int) -> int:
+        calls.append(f"foo({a})")
+        return len(str(a))
+
+    async def bar(app: TestContext, a: int) -> int:
+        calls.append(f"bar({a})")
+        return a * a
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={name_foo_and_bar: foo_and_bar, name_foo: foo, name_bar: bar},
+            codec=CancelCodec(),
+            connection=conn,
+        )
+        root_id = await app.schedule(foo_and_bar, topic=topic)(3)
+        assert root_id is not None
+        await conn.set_signal(root_id, CANCEL_SIGNAL)
+        await conn.loop(topic, app.handle)
+
+        with pytest.raises(NotFoundError):
+            await app.read(foo_and_bar)(3)
+        assert calls == []

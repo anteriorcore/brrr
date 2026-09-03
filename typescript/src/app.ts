@@ -88,12 +88,26 @@ export class AppConsumer<C> {
       return this.registry.codec.decodeReturn(taskName, payload) as R;
     };
   }
+
+  /**
+   * Set a signal for this root_id.
+   *
+   * The signal is raw bytes and will be interpreted by the codec. This can be
+   * considered global to all tasks under the rootId. This is not set using CAS
+   * so it is racy if multiple consumers try setting it for the same root_id.
+   *
+   * <docsync>set_signal</docsync>
+   */
+  public async setSignal(rootId: string, signal: Uint8Array): Promise<void> {
+    await this.connection.setSignal(rootId, signal);
+  }
 }
 
 export class AppWorker<C> extends AppConsumer<C> {
   public readonly handle = async (
     request: Request,
     connection: Connection,
+    signal: Uint8Array,
   ): Promise<Response | Defer | Abandon> => {
     const handler = this.registry.handlers[request.call.taskName];
     if (!handler) {
@@ -104,6 +118,7 @@ export class AppWorker<C> extends AppConsumer<C> {
         request.call,
         handler,
         new ActiveWorker(connection, this.registry),
+        signal,
       );
       return { payload };
     } catch (err) {

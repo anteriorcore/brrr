@@ -1,10 +1,12 @@
 #!/usr/bin/env node --unhandled-rejections=strict
 import {
-  ActiveWorker,
+  Abandon,
   AppWorker,
+  type Call,
   DemoJsonCodec,
   type DemoJsonCodecContext,
   Server,
+  type Task,
 } from "../src/index.ts";
 import { Dynamo, Redis } from "../src/backends/index.ts";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -75,7 +77,29 @@ const server = new Server(dynamo, redis, {
   },
 });
 
-const codec = new DemoJsonCodec();
+// Must match CANCEL_SIGNAL in brrr_demo.py: cancellation is initiated from the
+// Python demo's HTTP endpoint, and both demos share one store.
+const CANCEL_SIGNAL = new TextEncoder().encode("CANCEL");
+
+/**
+ * Signals are opaque to brrr, so honouring one is the codec's job.  Abandon
+ * stops this call without writing a value or waking its parent.
+ */
+class CancelJsonCodec extends DemoJsonCodec {
+  public override async invokeTask<A extends unknown[], R>(
+    call: Call,
+    handler: Task<DemoJsonCodecContext, A, R>,
+    activeWorker: DemoJsonCodecContext,
+    signal: Uint8Array,
+  ): Promise<Uint8Array> {
+    if (Buffer.compare(signal, CANCEL_SIGNAL) === 0) {
+      throw new Abandon();
+    }
+    return await super.invokeTask(call, handler, activeWorker, signal);
+  }
+}
+
+const codec = new CancelJsonCodec();
 
 const app = new AppWorker(codec, server, { fib, lucas });
 

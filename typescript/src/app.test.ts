@@ -1,5 +1,5 @@
 import { beforeEach, suite, test } from "node:test";
-import { notStrictEqual, strictEqual } from "node:assert";
+import assert, { notStrictEqual, strictEqual } from "node:assert";
 import {
   ActiveWorker,
   AppConsumer,
@@ -532,8 +532,9 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         public readonly myHandle = async (
           request: Request,
           connection: Connection,
+          signal: Uint8Array,
         ): Promise<Response | Defer | Abandon> => {
-          const response = await this.handle(request, connection);
+          const response = await this.handle(request, connection, signal);
           if (response instanceof Defer) {
             for (const deferredCall of response.calls) {
               Object.defineProperty(deferredCall.call, "taskName", {
@@ -752,6 +753,79 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       await server.loop(topic, app.handle, flusher);
       strictEqual(await app.read(foo)(), "foo");
       strictEqual(await app.read(bar)(), "bar");
+    });
+  });
+
+  await suite("signal task", async () => {
+    let queues: Record<string, (string | typeof BrrrShutdownSymbol)[]>;
+    store = new InMemoryStore();
+    cache = new InMemoryCache();
+    const publisher: Publisher = {
+      async emit(topic: string, callId: string | Call): Promise<void> {
+        queues[topic]?.push(callId as string);
+      },
+    };
+    const server = new Server(store, cache, publisher);
+    // arbitrarily chose stop sign in utf8
+    const SIGINT = Uint8Array.of(0xf0, 0x9f, 0x9b, 0x91);
+
+    class CancelCodec extends DemoJsonCodec {
+      override async invokeTask<A extends unknown[], R>(
+        call: Call,
+        handler: Task<DemoJsonCodecContext, A, R>,
+        activeWorker: DemoJsonCodecContext,
+        signal: Uint8Array,
+      ) {
+        if (Buffer.compare(signal, SIGINT) === 0) throw new Abandon();
+        return await super.invokeTask(call, handler, activeWorker, signal);
+      }
+    }
+
+    async function flusher() {
+      const item = queues[topic]?.shift();
+      if (!item) {
+        return BrrrShutdownSymbol;
+      }
+      return item;
+    }
+
+    beforeEach(() => {
+      queues = {
+        [topic]: [],
+      };
+    });
+
+    await test("no more sub tasks run after cancel", async () => {
+      let calls: string[] = [];
+
+      async function strlen(_: TestContext, a: number): Promise<number> {
+        calls.push(`foo(${a})`);
+        return String(a).length;
+      }
+      async function square(_: TestContext, a: number): Promise<number> {
+        calls.push(`square(${a})`);
+        return a * a;
+      }
+      async function strlenPlusSquare(
+        tc: TestContext,
+        a: number,
+      ): Promise<number> {
+        // intentionally sequential rather than gather for simplicity
+        calls.push(`strlenPlusSquare(${a})`);
+        return (await tc.call(strlen)(a)) + (await tc.call(square)(a));
+      }
+
+      const app = new AppWorker(new CancelCodec(), server, {
+        strlenPlusSquare,
+        strlen,
+        square,
+      });
+      const root_id = await app.schedule(strlenPlusSquare, topic)(4);
+      assert(root_id !== undefined);
+      await app.setSignal(root_id, SIGINT);
+      await server.loop(topic, app.handle, flusher);
+      await rejects(app.read(strlenPlusSquare)(4), NotFoundError);
+      deepStrictEqual(calls, []);
     });
   });
 });

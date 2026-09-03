@@ -3,6 +3,7 @@ import pytest
 from brrr import Connection, Defer, DeferredCall, Request, Response
 from brrr.backends.in_memory import CloseOnEmptyQueue, InMemoryByteStore
 from brrr.call import Call
+from brrr.connection import Abandon
 
 TOPIC = "brrr-test"
 
@@ -11,7 +12,9 @@ async def test_conn_raw() -> None:
     store = InMemoryByteStore()
     queue = CloseOnEmptyQueue([TOPIC])
 
-    async def handler(request: Request, conn: Connection) -> Defer | Response:
+    async def handler(
+        request: Request, conn: Connection, signal: bytes
+    ) -> Response | Defer:
         call = request.call
         match call.task_name:
             case "inner":
@@ -54,7 +57,9 @@ async def test_conn_exception() -> None:
     class MyError(Exception):
         pass
 
-    async def handler(request: Request, conn: Connection) -> Defer | Response:
+    async def handler(
+        request: Request, conn: Connection, signal: bytes
+    ) -> Response | Defer:
         nonlocal count
         count += 1
         if count == 1:
@@ -77,7 +82,7 @@ async def test_conn_root_id() -> None:
     store = InMemoryByteStore()
     queue = CloseOnEmptyQueue([TOPIC])
 
-    async def handler(request: Request, conn: Connection) -> Defer | Response:
+    async def handler(request: Request, conn: Connection, signal: bytes) -> Response:
         return Response(payload=request.root_id.encode("utf-8"))
 
     async with brrr.serve(queue, store, store) as conn:
@@ -92,10 +97,54 @@ async def test_conn_nop_closed_queue() -> None:
     queue = CloseOnEmptyQueue([TOPIC])
     queue.close()
 
-    async def handler(request: Request, conn: Connection) -> Defer | Response:
+    async def handler(
+        request: Request, conn: Connection, signal: bytes
+    ) -> Defer | Response:
         assert False
 
     async with brrr.serve(queue, store, store) as conn:
         await conn.loop(TOPIC, handler)
         await conn.loop(TOPIC, handler)
         await conn.loop(TOPIC, handler)
+
+
+async def test_conn_abandon() -> None:
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue([TOPIC])
+
+    async def handler(
+        request: Request, conn: Connection, signal: bytes
+    ) -> Response | Defer | Abandon:
+        async def handle_helper(
+            call_hash: str, child_call_hash: str, child_task_name: str
+        ) -> Response | Defer:
+            if val := await conn.read_raw(call_hash):
+                return Response(val)
+            return Defer(
+                [
+                    DeferredCall(
+                        topic=None,
+                        call=Call(
+                            call_hash=child_call_hash,
+                            task_name=child_task_name,
+                            payload=b"payload",
+                        ),
+                    ),
+                ]
+            )
+
+        call = request.call
+        match call.task_name:
+            case "inner2":
+                return await handle_helper("hash3", "hash4", "inner3")
+            case "inner":
+                return await handle_helper("hash2", "hash3", "inner2")
+            case "foo":
+                return await handle_helper("hash1", "hash2", "inner")
+            case _:
+                return Abandon()
+
+    async with brrr.serve(queue, store, store) as conn:
+        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
+        await conn.loop(TOPIC, handler)
+        assert await conn.read_raw("hash1") is None
