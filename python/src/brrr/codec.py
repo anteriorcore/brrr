@@ -35,6 +35,7 @@ class Codec[C](ABC):
         call: Call,
         task: Task[C, ..., Awaitable[Any]],
         active_worker: ActiveWorker[C],
+        metadata: bytes=b"",
     ) -> bytes:
         raise NotImplementedError()
 

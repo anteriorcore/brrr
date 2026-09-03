@@ -17,7 +17,7 @@ from brrr import (
     NotFoundError,
     Request,
     Response,
-    Task,
+    Task, ActiveWorker,
 )
 from brrr.backends.in_memory import (
     CloseOnEmptyQueue,
@@ -715,7 +715,7 @@ async def test_custom_context(topic: str) -> None:
             return Call(task_name=task_name, payload=b"", call_hash=task_name)
 
         async def invoke_task(
-            self, call: Call, handler: Any, active_worker: Any
+            self, call: Call, handler: Any, active_worker: Any, metadata: bytes
         ) -> bytes:
             result: str = await handler(call.task_name)
             return result.encode("utf-8")
@@ -759,3 +759,55 @@ async def test_app_root_id(topic: str) -> None:
         await conn.loop(topic, app.handle)
         # Ensure that it exists at all
         assert await app.read(foo)()
+
+
+async def test_app_depth_limit_using_metadata(topic: str) -> None:
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue([topic])
+    DEPTH_LIMIT = 10
+
+    class MyCodec(DemoPickleCodec):
+        async def invoke_task(
+            self,
+            call: Call,
+            task: Task[DemoPickleCodecContext, ..., Any],
+            active_worker: ActiveWorker[DemoPickleCodecContext],
+            metadata: bytes=b"",
+        ) -> bytes:
+            depth = int(metadata)
+            if depth > DEPTH_LIMIT:
+                raise Abandon
+            try:
+                return await super().invoke_task(call, task, active_worker, metadata)
+            except Defer as e:
+                raise Defer(
+                    DeferredCall(call=dcall.call, topic=dcall.topic, metadata=str(depth + 1).encode()) for dcall in e.calls
+                )
+
+    n = 0
+
+    async def foo(app: TestContext, a: int) -> int:
+        nonlocal n
+        n += 1
+        if a == 0:
+            # Prevent false positives from this test by exiting cleanly at some point
+            return 0
+        return await app.call(foo)(a - 1)
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={"foo": foo},
+            codec=MyCodec(),
+            connection=conn,
+        )
+        # times two to make sure it reaches depth before it overlaps with the second call
+        await app.schedule(foo, topic=topic, metadata=b"1")(2 * DEPTH_LIMIT)
+        await app.schedule(foo, topic=topic, metadata=b"1")(DEPTH_LIMIT - 1)
+
+        await conn.loop(topic, app.handle)
+
+        with pytest.raises(NotFoundError):
+            await app.read(foo)(2*DEPTH_LIMIT)
+        await app.read(foo)(DEPTH_LIMIT - 1)
+
+        assert n == DEPTH_LIMIT * 2 + DEPTH_LIMIT - 1

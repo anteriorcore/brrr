@@ -67,13 +67,14 @@ class AppConsumer[C]:
         task_spec: Task[C, P, R],
         *,
         topic: str,
+        metadata: bytes = b"",
     ) -> Callable[P, Awaitable[str | None]]: ...
     @overload
     def schedule(
-        self, task_spec: str, *, topic: str
+        self, task_spec: str, *, topic: str, metadata: bytes = b""
     ) -> Callable[..., Awaitable[str | None]]: ...
     def schedule(
-        self, task_spec: Any, *, topic: str
+        self, task_spec: Any, *, topic: str, metadata: bytes = b""
     ) -> Callable[..., Awaitable[str | None]]:
         """Public-facing one-shot schedule method."""
         task_name = self._registry.handlers.spec2name(task_spec)
@@ -81,7 +82,7 @@ class AppConsumer[C]:
         async def f(*args: Any, **kwargs: Any) -> str | None:
             call = self._registry.codec.encode_call(task_name, args, kwargs)
             return await self._connection.schedule_raw(
-                topic, call.call_hash, task_name, call.payload
+                topic, call.call_hash, task_name, call.payload, metadata
             )
 
         return f
@@ -113,6 +114,7 @@ class AppWorker[C](AppConsumer[C]):
                 request.call,
                 handler,
                 ActiveWorker(conn, self._registry, RootId(request.root_id)),
+                request.metadata,
             )
         except (Defer, Abandon) as e:
             return e
@@ -158,7 +160,8 @@ class ActiveWorker[C]:
             try:
                 payload = await self._connection._memory.get_value(call.call_hash)
             except NotFoundError:
-                raise Defer([DeferredCall(topic, call)])
+                # child metadata defaults to parent's unless codec reraises Defer with updated metadata
+                raise Defer([DeferredCall(topic, call, None)])
             else:
                 return self._registry.codec.decode_return(task_name, payload)
 

@@ -290,6 +290,7 @@ class MemoryContract(ByteStoreContract):
                 root_id="root",
                 call_hash="parent",
                 topic=topic,
+                metadata=b""
             )
 
             # base case

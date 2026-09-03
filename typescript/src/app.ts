@@ -58,6 +58,7 @@ export class AppConsumer<C> {
   public schedule<A extends unknown[], R>(
     taskIdentifier: TaskIdentifier<C, A, R>,
     topic: string,
+    metadata: Uint8Array = Uint8Array.of(),
   ): (...args: A) => Promise<string | undefined> {
     const taskName = taskIdentifierToName(
       taskIdentifier,
@@ -65,7 +66,7 @@ export class AppConsumer<C> {
     );
     return async (...args: A): Promise<string | undefined> => {
       const call = await this.registry.codec.encodeCall(taskName, args);
-      return await this.connection.scheduleRaw(topic, call);
+      return await this.connection.scheduleRaw(topic, call, metadata);
     };
   }
 
@@ -104,6 +105,7 @@ export class AppWorker<C> extends AppConsumer<C> {
         request.call,
         handler,
         new ActiveWorker(connection, this.registry),
+        request.metadata,
       );
       return { payload };
     } catch (err) {

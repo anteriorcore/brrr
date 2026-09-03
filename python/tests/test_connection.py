@@ -30,6 +30,7 @@ async def test_conn_raw() -> None:
                                     task_name="inner",
                                     payload=b"inner call payload",
                                 ),
+                                metadata=b"",
                             ),
                         ]
                     )

@@ -9,6 +9,7 @@ import { PendingReturn, ScheduleMessage, TaggedTuple } from "./tagged-tuple.ts";
 export interface DeferredCall {
   readonly topic: string | undefined;
   readonly call: Call;
+  readonly metadata: Uint8Array | undefined;
 }
 
 export class Defer {
@@ -32,6 +33,7 @@ export class Abandon {}
 
 export interface Request {
   readonly call: Call;
+  readonly metadata: Uint8Array;
 }
 
 export interface Response {
@@ -65,6 +67,7 @@ export class Connection {
   public async scheduleRaw(
     topic: string,
     call: Call,
+    metadata: Uint8Array,
   ): Promise<string | undefined> {
     if (await this.memory.hasValue(call.callHash)) {
       return;
