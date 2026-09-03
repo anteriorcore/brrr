@@ -82,7 +82,7 @@ export class AppConsumer<C> {
       if (!payload) {
         throw new NotFoundError({
           type: "value",
-          id: call.callHash,
+          callHash: call.callHash,
         });
       }
       return this.registry.codec.decodeReturn(taskName, payload) as R;

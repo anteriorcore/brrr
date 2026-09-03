@@ -79,7 +79,7 @@ class PendingReturns:
 class MemKey:
     type: Literal["pending_returns", "call", "value", "signal"]
     # Ids should only contain printable us-ascii characters
-    id: str
+    call_hash: str
 
 
 class CompareMismatch(Exception): ...
@@ -227,7 +227,7 @@ class Memory:
                 b"payload": call.payload,
             }
         )
-        await self.store.set(MemKey(type="call", id=call.call_hash), enc)
+        await self.store.set(MemKey(type="call", call_hash=call.call_hash), enc)
 
     async def has_value(self, call_hash: str) -> bool:
         """Inherently racy check for existence of a value.

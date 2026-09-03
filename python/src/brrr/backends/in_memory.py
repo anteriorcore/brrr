@@ -153,7 +153,7 @@ class CloseOnSilenceQueue(Queue):
 
 
 def _key2str(key: MemKey) -> str:
-    return f"{key.type}/{key.id}"
+    return f"{key.type}/{key.call_hash}"
 
 
 # Just to drive the point home

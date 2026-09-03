@@ -89,7 +89,7 @@ export class LocalBrrr<C> {
             if (!payload) {
               throw new NotFoundError({
                 type: "value",
-                id: callHash,
+                callHash: callHash,
               });
             }
             const result = this.registry.codec.decodeReturn(

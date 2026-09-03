@@ -191,7 +191,7 @@ export class Dynamo implements Store {
 
   private key(key: MemKey): Record<string, NativeAttributeValue> {
     return {
-      pk: key.id,
+      pk: key.callHash,
       sk: key.type,
     };
   }
