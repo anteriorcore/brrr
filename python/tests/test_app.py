@@ -9,6 +9,7 @@ import brrr
 import pytest
 from brrr import (
     Abandon,
+    ActiveWorker,
     AppConsumer,
     AppWorker,
     Connection,
@@ -17,7 +18,7 @@ from brrr import (
     NotFoundError,
     Request,
     Response,
-    Task, ActiveWorker,
+    Task,
 )
 from brrr.backends.in_memory import (
     CloseOnEmptyQueue,
@@ -772,7 +773,7 @@ async def test_app_depth_limit_using_metadata(topic: str) -> None:
             call: Call,
             task: Task[DemoPickleCodecContext, ..., Any],
             active_worker: ActiveWorker[DemoPickleCodecContext],
-            metadata: bytes=b"",
+            metadata: bytes = b"",
         ) -> bytes:
             depth = int(metadata)
             if depth > DEPTH_LIMIT:
@@ -781,7 +782,12 @@ async def test_app_depth_limit_using_metadata(topic: str) -> None:
                 return await super().invoke_task(call, task, active_worker, metadata)
             except Defer as e:
                 raise Defer(
-                    DeferredCall(call=dcall.call, topic=dcall.topic, metadata=str(depth + 1).encode()) for dcall in e.calls
+                    DeferredCall(
+                        call=dcall.call,
+                        topic=dcall.topic,
+                        metadata=str(depth + 1).encode(),
+                    )
+                    for dcall in e.calls
                 )
 
     n = 0
@@ -807,7 +813,7 @@ async def test_app_depth_limit_using_metadata(topic: str) -> None:
         await conn.loop(topic, app.handle)
 
         with pytest.raises(NotFoundError):
-            await app.read(foo)(2*DEPTH_LIMIT)
+            await app.read(foo)(2 * DEPTH_LIMIT)
         await app.read(foo)(DEPTH_LIMIT - 1)
 
         assert n == DEPTH_LIMIT * 2 + DEPTH_LIMIT - 1

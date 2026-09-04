@@ -34,7 +34,7 @@ class TaggedTuple:
     def astuple(self) -> tuple[Any, ...]:
         # raw bytes possibly could have non utf8 so convert to hex representation
         def enc(field: dataclasses.Field[Any], val: Any) -> Any:
-            if field.type == bytes:
+            if field.type is bytes:
                 return val.hex()
             return val
 
@@ -52,7 +52,7 @@ class TaggedTuple:
             )
 
         def dec(field: dataclasses.Field[Any], val: Any) -> Any:
-            if field.type != bytes:
+            if field.type is not bytes:
                 return val
             return bytes.fromhex(val)
 

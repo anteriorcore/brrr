@@ -41,7 +41,7 @@ class DemoPickleCodec(Codec[DemoPickleCodecContext]):
         call: Call,
         task: Task[DemoPickleCodecContext, ..., Any],
         active_worker: ActiveWorker[DemoPickleCodecContext],
-        metadata: bytes=b"",
+        metadata: bytes = b"",
     ) -> bytes:
         args, kwargs = pickle.loads(call.payload)
         return pickle.dumps(await task(active_worker, *args, **kwargs))

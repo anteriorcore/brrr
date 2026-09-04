@@ -159,8 +159,12 @@ class Connection:
         await self._queue.put_message(topic, job.encode().decode("utf-8"))
 
     async def schedule_raw(
-        self, topic: str, idempotency_key: str, task_name: str, payload: bytes,
-        metadata: bytes = b""
+        self,
+        topic: str,
+        idempotency_key: str,
+        task_name: str,
+        payload: bytes,
+        metadata: bytes = b"",
     ) -> str | None:
         """Schedule this call on the brrr workforce.
 
@@ -215,7 +219,9 @@ class Server(Connection):
         Server._total_workers += 1
 
     async def _schedule_return_call(self, ret: PendingReturn) -> None:
-        job = ScheduleMessage(root_id=ret.root_id, call_hash=ret.call_hash, metadata=ret.metadata)
+        job = ScheduleMessage(
+            root_id=ret.root_id, call_hash=ret.call_hash, metadata=ret.metadata
+        )
         await self._put_job(ret.topic, job)
 
     async def _schedule_call_nested(
