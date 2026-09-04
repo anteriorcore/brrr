@@ -552,6 +552,71 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(await app.read(foo)(4), 14);
     });
 
+    await test("depth limit using metadata", async () => {
+      const DEPTH_LIMIT = 10;
+
+      // Metadata is opaque to brrr, so a codec is free to use it as a depth
+      // counter: read the parent's depth on the way in, hand the incremented
+      // value to every child it defers to.
+      class MyCodec extends DemoJsonCodec {
+        public override async invokeTask<A extends unknown[], R>(
+          call: Call,
+          handler: Task<TestContext, A, R>,
+          activeWorker: TestContext,
+          metadata: Uint8Array,
+        ): Promise<Uint8Array> {
+          const depth = Number(decoder.decode(metadata));
+          if (depth > DEPTH_LIMIT) {
+            throw new Abandon();
+          }
+          try {
+            return await super.invokeTask(
+              call,
+              handler,
+              activeWorker,
+              metadata,
+            );
+          } catch (err) {
+            if (!(err instanceof Defer)) {
+              throw err;
+            }
+            throw new Defer(
+              ...err.calls.map((dcall) => ({
+                topic: dcall.topic,
+                call: dcall.call,
+                metadata: encoder.encode(String(depth + 1)),
+              })),
+            );
+          }
+        }
+      }
+
+      let n = 0;
+
+      async function foo(app: TestContext, a: number): Promise<number> {
+        n++;
+        if (a === 0) {
+          // Prevent false positives from this test by exiting cleanly at some point
+          return 0;
+        }
+        return await app.call(foo)(a - 1);
+      }
+
+      const server = new Server(store, cache, publisher);
+      const app = new AppWorker(new MyCodec(), server, { foo });
+
+      // times two to make sure it reaches depth before it overlaps with the second call
+      await app.schedule(foo, topic, encoder.encode("1"))(2 * DEPTH_LIMIT);
+      await app.schedule(foo, topic, encoder.encode("1"))(DEPTH_LIMIT - 1);
+
+      await server.loop(topic, app.handle, flusher);
+
+      await rejects(app.read(foo)(2 * DEPTH_LIMIT), NotFoundError);
+      strictEqual(await app.read(foo)(DEPTH_LIMIT - 1), 0);
+
+      strictEqual(n, DEPTH_LIMIT * 2 + DEPTH_LIMIT - 1);
+    });
+
     await suite("spawn limit", async () => {
       await test("spawn limit depth", async () => {
         let n = 0;

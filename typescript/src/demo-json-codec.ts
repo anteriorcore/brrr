@@ -54,6 +54,7 @@ export class DemoJsonCodec implements Codec<DemoJsonCodecContext> {
     call: Call,
     handler: Task<DemoJsonCodecContext, A, R>,
     activeWorker: DemoJsonCodecContext,
+    _metadata: Uint8Array,
   ): Promise<Uint8Array> {
     const decoded = decoder.decode(call.payload);
     const args = this.json.parse(decoded) as A;

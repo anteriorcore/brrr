@@ -44,7 +44,7 @@ export class TagMismatchError extends BrrrError {
 export class MalformedTaggedTupleError extends BrrrError {
   public constructor(clz: Tagged) {
     super(
-      `Malformed tagged tuple for ${clz.name}, expected ${clz.length} elements`,
+      `Malformed tagged tuple for ${clz.name}, expected ${clz.fields.length} elements`,
     );
   }
 }

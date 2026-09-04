@@ -33,6 +33,7 @@ export class Abandon {}
 
 export interface Request {
   readonly call: Call;
+  readonly rootId: string;
   readonly metadata: Uint8Array;
 }
 
@@ -74,7 +75,10 @@ export class Connection {
     }
     await this.memory.setCall(call);
     const rootId = randomUUID().replaceAll("-", "");
-    await this.putJob(topic, new ScheduleMessage(rootId, call.callHash));
+    await this.putJob(
+      topic,
+      new ScheduleMessage(rootId, call.callHash, metadata),
+    );
     return rootId;
   }
 
@@ -115,7 +119,10 @@ export class Server extends Connection {
   ): Promise<Call | undefined> {
     const message = TaggedTuple.decodeFromString(ScheduleMessage, payload);
     const call = await this.memory.getCall(message.callHash);
-    const handled = await requestHandler({ call }, this);
+    const handled = await requestHandler(
+      { call, rootId: message.rootId, metadata: message.metadata },
+      this,
+    );
     if (handled instanceof Defer) {
       await Promise.all(
         handled.calls.map((child) => {
@@ -155,6 +162,7 @@ export class Server extends Connection {
     const job = new ScheduleMessage(
       pendingReturn.rootId,
       pendingReturn.callHash,
+      pendingReturn.metadata,
     );
     await this.putJob(pendingReturn.topic, job);
   }
@@ -165,18 +173,21 @@ export class Server extends Connection {
     parent: ScheduleMessage,
   ): Promise<void> {
     await this.memory.setCall(child.call);
+    // undefined (not empty) means "inherit the parent's metadata"
+    const metadata = child.metadata ?? parent.metadata;
     const callHash = child.call.callHash;
     const pendingReturn = new PendingReturn(
       parent.rootId,
       parent.callHash,
       topic,
+      parent.metadata,
     );
     const shouldSchedule = await this.memory.addPendingReturns(
       callHash,
       pendingReturn,
     );
     if (shouldSchedule) {
-      const job = new ScheduleMessage(parent.rootId, callHash);
+      const job = new ScheduleMessage(parent.rootId, callHash, metadata);
       await this.putJob(child.topic || topic, job);
     }
   }

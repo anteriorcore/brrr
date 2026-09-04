@@ -77,6 +77,7 @@ export async function codecContractTest<C>(
               identify,
               // @ts-expect-error type cheat for test
               () => null as ActiveWorker,
+              Uint8Array.of(),
             );
             const decoded = await codec.decodeReturn(identify.name, result);
             deepStrictEqual(decoded, await identify(context, args[1]));

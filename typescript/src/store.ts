@@ -43,7 +43,7 @@ export class PendingReturns {
       [...new Set(returns)].map((it) => {
         return TaggedTuple.fromTuple(
           PendingReturn,
-          it as [number, string, string, string],
+          it as [number, ...unknown[]],
         );
       }),
     );
