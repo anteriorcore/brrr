@@ -831,6 +831,7 @@ class DuplicatingQueue(CloseOnEmptyQueue):
         )
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.dependencies
 async def test_no_overwrite_return() -> None:
     topic = "test"

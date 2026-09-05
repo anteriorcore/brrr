@@ -186,7 +186,7 @@ class InMemoryByteStore(Store, Cache):
 
     @override
     async def set(self, key: MemKey, value: bytes) -> None:
-        self.inner[_key2str(key)] = value
+        self.inner.setdefault(_key2str(key), value)
 
     @override
     async def delete(self, key: MemKey) -> None:
