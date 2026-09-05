@@ -1,4 +1,11 @@
+import logging
+
 import pytest
+
+
+def pytest_configure(config):
+    sub_logger = logging.getLogger("brrr")
+    sub_logger.setLevel(logging.DEBUG)
 
 
 @pytest.fixture(params=("brrr-test", "'/:/\"~`\\", "🇰🇳"))

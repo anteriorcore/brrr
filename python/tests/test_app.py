@@ -1,10 +1,12 @@
 import asyncio
 import dataclasses
 import typing
+import uuid
 from collections import Counter
-from typing import Any, cast
+from typing import Any, cast, override
 from unittest.mock import AsyncMock
 
+import aioboto3
 import brrr
 import pytest
 from brrr import (
@@ -20,6 +22,7 @@ from brrr import (
     Response,
     Task,
 )
+from brrr.backends.dynamo import DynamoDbMemStore
 from brrr.backends.in_memory import (
     CloseOnEmptyQueue,
     CloseOnSilenceQueue,
@@ -816,3 +819,50 @@ async def test_cancel_task(topic: str, task_name: str) -> None:
         with pytest.raises(NotFoundError):
             await app.read(foo_and_bar)(3)
         assert calls == []
+
+
+class DuplicatingQueue(CloseOnEmptyQueue):
+    """Duplicate all messages, leading to >1 execution"""
+
+    @override
+    async def put_message(self, topic: str, body: str) -> None:
+        await asyncio.gather(
+            super().put_message(topic, body), super().put_message(topic, body)
+        )
+
+
+@pytest.mark.dependencies
+async def test_no_overwrite_return() -> None:
+    topic = "test"
+    cache = InMemoryByteStore()
+    queue = DuplicatingQueue([topic])
+
+    was_called = False
+    barrier = asyncio.Barrier(2)
+
+    async def foo(app: TestContext) -> str:
+        # Race safe because of the GIL, I think
+        nonlocal was_called
+        await barrier.wait()
+        if was_called:
+            # Ensure the second call actually returns last
+            await asyncio.sleep(1)
+            return "last"
+        was_called = True
+        return "first"
+
+    async with aioboto3.Session().client("dynamodb") as dync:
+        table_name = f"brrr_test_{uuid.uuid4().hex}"
+        memory = DynamoDbMemStore(dync, table_name)
+        await memory.create_table()
+        async with brrr.serve(queue, memory, cache) as conn:
+            app = AppWorker[TestContext](
+                handlers={"foo": foo},
+                codec=DemoPickleCodec(),
+                connection=conn,
+            )
+            await app.schedule(foo, topic=topic)()
+            await asyncio.gather(
+                conn.loop(topic, app.handle), conn.loop(topic, app.handle)
+            )
+            assert await app.read(foo)() == "first"
