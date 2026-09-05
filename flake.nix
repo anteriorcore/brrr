@@ -125,6 +125,12 @@
                     environment = demoEnv;
                   };
                 };
+              settings.processes.server.depends_on.dynamodb.condition = "process_healthy";
+              settings.processes.server.depends_on.r1.condition = "process_healthy";
+              settings.processes.worker-py.depends_on.dynamodb.condition = "process_healthy";
+              settings.processes.worker-py.depends_on.r1.condition = "process_healthy";
+              settings.processes.worker-ts.depends_on.dynamodb.condition = "process_healthy";
+              settings.processes.worker-ts.depends_on.r1.condition = "process_healthy";
             };
           };
           # WIP, exporting is best effort.
