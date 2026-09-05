@@ -126,9 +126,15 @@ class DynamoDbMemStore(Store):
         return await self.get(key)
 
     async def set(self, key: MemKey, value: bytes) -> None:
-        await self.client.put_item(
-            TableName=self.table_name, Item={**self.key(key), "value": {"B": value}}
-        )
+        """DynamoDB set with first-write-wins semantics"""
+        try:
+            await self.client.put_item(
+                TableName=self.table_name,
+                Item={**self.key(key), "value": {"B": value}},
+                ConditionExpression="attribute_not_exists(pk)",
+            )
+        except self.client.exceptions.ConditionalCheckFailedException:
+            pass
 
     async def delete(self, key: MemKey) -> None:
         await self.client.delete_item(
