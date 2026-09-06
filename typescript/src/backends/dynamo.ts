@@ -60,15 +60,7 @@ export class Dynamo implements Store {
   }
 
   public async set(key: MemKey, value: Uint8Array): Promise<void> {
-    await this.client.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: {
-          ...this.key(key),
-          value,
-        },
-      }),
-    );
+    await this.setNewValue(key, value);
   }
 
   public async delete(key: MemKey): Promise<void> {
@@ -84,13 +76,13 @@ export class Dynamo implements Store {
   public async setNewValue(key: MemKey, value: Uint8Array): Promise<boolean> {
     try {
       await this.client.send(
-        new UpdateCommand({
+        new PutCommand({
           TableName: this.tableName,
-          Key: this.key(key),
-          UpdateExpression: "SET #value = :value",
-          ConditionExpression: "attribute_not_exists(#value)",
-          ExpressionAttributeNames: { "#value": "value" },
-          ExpressionAttributeValues: { ":value": value },
+          Item: {
+            ...this.key(key),
+            value,
+          },
+          ConditionExpression: "attribute_not_exists(pk)",
         }),
       );
       return true;
