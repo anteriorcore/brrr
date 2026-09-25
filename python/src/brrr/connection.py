@@ -34,6 +34,8 @@ class DeferredCall:
     # None means self
     topic: str | None
     call: Call
+    # None means parent metadata
+    metadata: bytes | None
 
 
 class Defer(Exception):
@@ -68,11 +70,17 @@ class Request:
     # schedule operation.  Every “schedule” gets a new root id, regardless of
     # the call parameters, regardless of cache availability.
     root_id: str
-    # Probably some extra useful out-of-band metadata at some point?  Something
-    # like "headers"?  Metadata?  For now we only have calls in a request, but
-    # it’s very likely we’ll want to add things here very soon and this is part
-    # of the public API, so let’s wrap the call itself in a single-member
-    # Request class.
+    # Opaque out-of-band metadata: tracing context, task depth limits, anything
+    # non-semantic.  Comparable to SQS message attributes:
+    # https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-message-metadata.html
+    #
+    # Deliberately NOT part of the call hash, so it never participates in
+    # memoization: two calls differing only in metadata share a single cache
+    # entry.  A task must therefore not let metadata affect its return value.
+    #
+    # A task inherits its parent's metadata by default and can override what it
+    # passes to each child; it can never affect its parent's.
+    metadata: bytes
 
 
 @dataclass
@@ -161,7 +169,12 @@ class Connection:
         await self._queue.put_message(topic, job.encode().decode("utf-8"))
 
     async def schedule_raw(
-        self, topic: str, idempotency_key: str, task_name: str, payload: bytes
+        self,
+        topic: str,
+        idempotency_key: str,
+        task_name: str,
+        payload: bytes,
+        metadata: bytes,
     ) -> str | None:
         """Schedule this call on the brrr workforce.
 
@@ -181,6 +194,7 @@ class Connection:
         job = ScheduleMessage(
             call_hash=idempotency_key,
             root_id=root_id,
+            metadata=metadata.hex(),
         )
         await self._put_job(topic, job)
         return root_id
@@ -196,12 +210,6 @@ class Connection:
 
     async def set_signal(self, root_id: str, signal: bytes) -> None:
         await self._memory.set_signal(root_id, signal)
-
-    async def clear_signal(self, root_id: str) -> None:
-        try:
-            await self._memory.clear_signal(root_id)
-        except NotFoundError:
-            pass
 
 
 # Separate classes for now, might not need to be, although it does leave open
@@ -224,7 +232,9 @@ class Server(Connection):
         Server._total_workers += 1
 
     async def _schedule_return_call(self, ret: PendingReturn) -> None:
-        job = ScheduleMessage(root_id=ret.root_id, call_hash=ret.call_hash)
+        job = ScheduleMessage(
+            root_id=ret.root_id, call_hash=ret.call_hash, metadata=ret.metadata
+        )
         await self._put_job(ret.topic, job)
 
     async def _schedule_call_nested(
@@ -259,17 +269,22 @@ class Server(Connection):
         # because it will then immediately call this parent flow back, which is
         # fine because the result does in fact exist.
         child_topic = child.topic or my_topic
+        metadata: str = (
+            child.metadata.hex() if child.metadata is not None else parent.metadata
+        )
         call_hash = child.call.call_hash
         ret = PendingReturn(
             root_id=parent.root_id,
             call_hash=parent.call_hash,
             topic=my_topic,
+            metadata=parent.metadata,
         )
         should_schedule = await self._memory.add_pending_return(call_hash, ret)
         if should_schedule:
             job = ScheduleMessage(
                 call_hash=call_hash,
                 root_id=parent.root_id,
+                metadata=metadata,
             )
             await self._put_job(child_topic, job)
 
@@ -322,7 +337,9 @@ class Server(Connection):
         logger.debug(
             f"Calling {my_topic} -> {msg.root_id}/{msg.call_hash} -> {call.task_name}"
         )
-        req = Request(call=call, root_id=msg.root_id)
+        req = Request(
+            call=call, root_id=msg.root_id, metadata=bytes.fromhex(msg.metadata)
+        )
         ret = await handler(req, self, signal)
         match ret:
             case Defer(calls=calls):

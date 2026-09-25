@@ -26,3 +26,25 @@ export const bencoder = {
  */
 export const encoder = new TextEncoder();
 export const decoder = new TextDecoder(encoding);
+
+/**
+ * Raw bytes are hex-encoded before they go on the wire.
+ *
+ * Bencode has no separate byte string type and brrr decodes bencode strings as
+ * UTF-8, which is lossy for arbitrary bytes, so byte-valued fields travel as
+ * their hex representation instead.
+ */
+export const hex = {
+  encode(data: Uint8Array): string {
+    return Buffer.from(data).toString("hex");
+  },
+  decode(data: string): Uint8Array {
+    // Buffer.from(_, "hex") stops at the first invalid character instead of
+    // failing, which would silently truncate; reject up front like Python's
+    // bytes.fromhex does.
+    if (!/^([0-9a-fA-F]{2})*$/.test(data)) {
+      throw new Error(`Not a hex string: ${JSON.stringify(data)}`);
+    }
+    return Uint8Array.from(Buffer.from(data, "hex"));
+  },
+} as const;

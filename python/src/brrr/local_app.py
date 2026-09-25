@@ -85,7 +85,7 @@ class LocalBrrr[C]:
             async with local_app(
                 topic=self.topic, handlers=self.handlers, codec=self.codec
             ) as app:
-                await app.schedule(f)(*args, **kwargs)
+                await app.schedule(f, metadata=b"")(*args, **kwargs)
                 await app.run()
                 return await app.read(f)(*args, **kwargs)
 

@@ -33,6 +33,7 @@ async def test_conn_raw() -> None:
                                     task_name="inner",
                                     payload=b"inner call payload",
                                 ),
+                                metadata=b"",
                             ),
                         ]
                     )
@@ -41,7 +42,7 @@ async def test_conn_raw() -> None:
         assert False, f"Unknown task name: {call.task_name}"
 
     async with brrr.serve(queue, store, store) as conn:
-        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
+        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123", metadata=b"")
         await conn.loop(TOPIC, handler)
         assert await conn.read_raw("hash1") == b"zim"
         assert await conn.read_raw("hash2") == b"inner return value"
@@ -68,8 +69,8 @@ async def test_conn_exception() -> None:
         return Response(payload=b"Good")
 
     async with brrr.serve(queue, store, store) as conn:
-        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
-        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
+        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123", metadata=b"")
+        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123", metadata=b"")
         with pytest.raises(MyError):
             await conn.loop(TOPIC, handler)
         assert await conn.read_raw("hash1") is None
@@ -86,7 +87,7 @@ async def test_conn_root_id() -> None:
         return Response(payload=request.root_id.encode("utf-8"))
 
     async with brrr.serve(queue, store, store) as conn:
-        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
+        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123", metadata=b"")
         await conn.loop(TOPIC, handler)
         # Just ensure that it exists at all
         assert await conn.read_raw("hash1")
@@ -129,6 +130,7 @@ async def test_conn_abandon() -> None:
                             task_name=child_task_name,
                             payload=b"payload",
                         ),
+                        metadata=None,
                     ),
                 ]
             )
@@ -145,6 +147,6 @@ async def test_conn_abandon() -> None:
                 return Abandon()
 
     async with brrr.serve(queue, store, store) as conn:
-        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123")
+        await conn.schedule_raw(TOPIC, "hash1", "foo", b"123", metadata=b"")
         await conn.loop(TOPIC, handler)
         assert await conn.read_raw("hash1") is None

@@ -72,13 +72,14 @@ export async function codecContractTest<C>(
           await test(name, async () => {
             const call = await codec.encodeCall(identify.name, [args[0]]);
             const context = contextFactory();
-            const result = await codec.invokeTask(
+            const result = await codec.invokeTask({
               call,
-              identify,
+              task: identify,
               // @ts-expect-error type cheat for test
-              () => null as ActiveWorker,
-              new Uint8Array(),
-            );
+              activeWorker: () => null as ActiveWorker,
+              signal: new Uint8Array(),
+              metadata: new Uint8Array(),
+            });
             const decoded = await codec.decodeReturn(identify.name, result);
             deepStrictEqual(decoded, await identify(context, args[1]));
           });

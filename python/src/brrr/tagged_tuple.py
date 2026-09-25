@@ -54,14 +54,16 @@ class TaggedTupleStrings(TaggedTuple):
 
 @dataclass(frozen=True)
 class PendingReturn(TaggedTuple):
-    tag = 1
+    tag = 3
     root_id: str
     call_hash: str
     topic: str
+    metadata: str
 
 
 @dataclass(frozen=True)
 class ScheduleMessage(TaggedTupleStrings):
-    tag = 2
+    tag = 4
     root_id: str
     call_hash: str
+    metadata: str

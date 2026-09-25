@@ -288,9 +288,7 @@ class MemoryContract(ByteStoreContract):
 
             call_hash = "key"
             one = PendingReturn(
-                root_id="root",
-                call_hash="parent",
-                topic=topic,
+                root_id="root", call_hash="parent", topic=topic, metadata=""
             )
 
             # base case

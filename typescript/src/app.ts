@@ -58,6 +58,7 @@ export class AppConsumer<C> {
   public schedule<A extends unknown[], R>(
     taskIdentifier: TaskIdentifier<C, A, R>,
     topic: string,
+    metadata: Uint8Array = Uint8Array.of(),
   ): (...args: A) => Promise<string | undefined> {
     const taskName = taskIdentifierToName(
       taskIdentifier,
@@ -65,7 +66,7 @@ export class AppConsumer<C> {
     );
     return async (...args: A): Promise<string | undefined> => {
       const call = await this.registry.codec.encodeCall(taskName, args);
-      return await this.connection.scheduleRaw(topic, call);
+      return await this.connection.scheduleRaw(topic, call, metadata);
     };
   }
 
@@ -114,12 +115,13 @@ export class AppWorker<C> extends AppConsumer<C> {
       throw new TaskNotFoundError(request.call.taskName);
     }
     try {
-      const payload = await this.registry.codec.invokeTask(
-        request.call,
-        handler,
-        new ActiveWorker(connection, this.registry),
+      const payload = await this.registry.codec.invokeTask({
+        call: request.call,
+        task: handler,
+        activeWorker: new ActiveWorker(connection, this.registry),
         signal,
-      );
+        metadata: request.metadata,
+      });
       return { payload };
     } catch (err) {
       if (err instanceof Defer || err instanceof Abandon) {
@@ -151,7 +153,7 @@ export class ActiveWorker<C> {
       const call = await this.registry.codec.encodeCall(taskName, args);
       const payload = await this.connection.memory.getValue(call.callHash);
       if (!payload) {
-        throw new Defer({ topic, call });
+        throw new Defer({ topic, call, metadata: undefined });
       }
       return this.registry.codec.decodeReturn(taskName, payload) as R;
     };

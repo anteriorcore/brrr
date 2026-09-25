@@ -29,7 +29,7 @@ async def test_spawn_limit_depth(topic: str, task_name: str) -> None:
         app = AppWorker(
             handlers={task_name: foo}, codec=DemoPickleCodec(), connection=conn
         )
-        await app.schedule(task_name, topic=topic)(conn._spawn_limit + 3)
+        await app.schedule(task_name, topic=topic, metadata=b"")(conn._spawn_limit + 3)
 
         with pytest.raises(SpawnLimitError):
             await conn.loop(topic, app.handle)
@@ -59,7 +59,7 @@ async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
             codec=DemoPickleCodec(),
             connection=conn,
         )
-        await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 4)
+        await app.schedule(name_foo, topic=topic, metadata=b"")(conn._spawn_limit + 4)
 
         with pytest.raises(SpawnLimitError):
             await conn.loop(topic, app.handle)
@@ -94,7 +94,7 @@ async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
             # Very ugly but this works for testing
             cache.inner = {}
             try:
-                await app.schedule(name_foo, topic=topic)(n)
+                await app.schedule(name_foo, topic=topic, metadata=b"")(n)
                 await conn.loop(topic, app.handle)
                 break
             except SpawnLimitError:
@@ -131,7 +131,7 @@ async def test_spawn_limit_breadth_manual(topic: str, task_name: str) -> None:
             codec=DemoPickleCodec(),
             connection=conn,
         )
-        await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 3)
+        await app.schedule(name_foo, topic=topic, metadata=b"")(conn._spawn_limit + 3)
         with pytest.raises(SpawnLimitError):
             await conn.loop(topic, app.handle)
 
@@ -165,7 +165,7 @@ async def test_spawn_limit_cached(topic: str, task_name: str) -> None:
             codec=DemoPickleCodec(),
             connection=conn,
         )
-        await app.schedule(name_foo, topic=topic)(conn._spawn_limit + 5)
+        await app.schedule(name_foo, topic=topic, metadata=b"")(conn._spawn_limit + 5)
         await conn.loop(topic, app.handle)
 
         assert n == 1

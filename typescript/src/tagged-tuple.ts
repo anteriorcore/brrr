@@ -62,16 +62,23 @@ export const TaggedTuple = {
 } as const;
 
 export class PendingReturn {
-  public static readonly tag = 1;
+  public static readonly tag = 3;
 
   public readonly rootId: string;
   public readonly callHash: string;
   public readonly topic: string;
+  public readonly metadata: string;
 
-  constructor(rootId: string, callHash: string, topic: string) {
+  constructor(
+    rootId: string,
+    callHash: string,
+    topic: string,
+    metadata: string,
+  ) {
     this.rootId = rootId;
     this.callHash = callHash;
     this.topic = topic;
+    this.metadata = metadata;
   }
 
   public isRepeatedCall(other: PendingReturn): boolean {
@@ -84,13 +91,15 @@ export class PendingReturn {
 }
 
 export class ScheduleMessage {
-  public static readonly tag = 2;
+  public static readonly tag = 4;
 
   public readonly rootId: string;
   public readonly callHash: string;
+  public readonly metadata: string;
 
-  constructor(rootId: string, callHash: string) {
+  constructor(rootId: string, callHash: string, metadata: string) {
     this.rootId = rootId;
     this.callHash = callHash;
+    this.metadata = metadata;
   }
 }

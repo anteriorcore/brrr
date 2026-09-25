@@ -86,16 +86,29 @@ const CANCEL_SIGNAL = new TextEncoder().encode("CANCEL");
  * stops this call without writing a value or waking its parent.
  */
 class CancelJsonCodec extends DemoJsonCodec {
-  public override async invokeTask<A extends unknown[], R>(
-    call: Call,
-    handler: Task<DemoJsonCodecContext, A, R>,
-    activeWorker: DemoJsonCodecContext,
-    signal: Uint8Array,
-  ): Promise<Uint8Array> {
+  public override async invokeTask<A extends unknown[], R>({
+    call,
+    task,
+    activeWorker,
+    signal,
+    metadata,
+  }: {
+    call: Call;
+    task: Task<DemoJsonCodecContext, A, R>;
+    activeWorker: DemoJsonCodecContext;
+    signal: Uint8Array;
+    metadata: Uint8Array;
+  }): Promise<Uint8Array> {
     if (Buffer.compare(signal, CANCEL_SIGNAL) === 0) {
       throw new Abandon();
     }
-    return await super.invokeTask(call, handler, activeWorker, signal);
+    return await super.invokeTask({
+      call,
+      task,
+      activeWorker,
+      signal,
+      metadata,
+    });
   }
 }
 

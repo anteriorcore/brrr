@@ -50,15 +50,22 @@ export class DemoJsonCodec implements Codec<DemoJsonCodecContext> {
     return { taskName, payload, callHash };
   }
 
-  public async invokeTask<A extends unknown[], R>(
-    call: Call,
-    handler: Task<DemoJsonCodecContext, A, R>,
-    activeWorker: DemoJsonCodecContext,
-    signal: Uint8Array,
-  ): Promise<Uint8Array> {
+  public async invokeTask<A extends unknown[], R>({
+    call,
+    task,
+    activeWorker,
+    signal,
+    metadata,
+  }: {
+    call: Call;
+    task: Task<DemoJsonCodecContext, A, R>;
+    activeWorker: DemoJsonCodecContext;
+    signal: Uint8Array;
+    metadata: Uint8Array;
+  }): Promise<Uint8Array> {
     const decoded = decoder.decode(call.payload);
     const args = this.json.parse(decoded) as A;
-    const result = await handler(activeWorker, ...args);
+    const result = await task(activeWorker, ...args);
     const resultJson = this.json.stringify(result);
     return encoder.encode(resultJson);
   }
