@@ -178,6 +178,26 @@ class ActiveWorker[C]:
 
         return f
 
+    def inline_call[**P, R](
+        self,
+        task_spec: Task[C, P, R]
+    ) -> Callable[P, Awaitable[R]]:
+        task_name = self._registry.handlers.spec2name(task_spec)
+
+        async def f(*args: P.args, **kwargs: P.kwargs) -> R:
+            call = self._registry.codec.encode_call(task_name, args, kwargs)
+            try:
+                payload = await self._connection._memory.get_value(call.call_hash)
+                return self._registry.codec.decode_return(task_name, payload)
+            except NotFoundError:
+                signal = await self._connection._memory.get_signal(self.root_id)
+                payload = await self._registry.codec.invoke_task(call, task_spec, self, signal)
+                await self._connection._memory.set_value(call_hash=call.call_hash, payload=payload)
+                return self._registry.codec.decode_return(task_name, payload)
+
+        return f
+
+
     # Type annotations for Brrr.gather are modeled after asyncio.gather:
     # support explicit types for 1-5 arguments (and when all have the same type),
     # and a catch-all for the rest.
