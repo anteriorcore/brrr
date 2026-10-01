@@ -599,11 +599,12 @@ async def test_app_loop_resumable(topic: str) -> None:
         )
         while True:
             try:
-                await app.schedule(foo, topic=topic)(3)
+                await app.schedule(foo, topic=topic)(29)
                 await conn.loop(topic, app.handle)
                 break
             except MyError:
                 continue
+        assert await app.read(foo)(29) == 29
 
     assert errors == 0
 
@@ -642,6 +643,7 @@ async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
                 break
             except MyError:
                 continue
+        assert await app.read(foo)(3) == 3
 
     assert errors == 0
 
