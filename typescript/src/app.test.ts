@@ -445,6 +445,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           throw err;
         }
       }
+      strictEqual(await app.read(foo)(3), 3);
       strictEqual(errors, 0);
     });
 
@@ -473,7 +474,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       while (true) {
         try {
-          await app.schedule(foo, topic)(3);
+          await app.schedule(foo, topic)(4);
           await server.loop(topic, app.handle, flusher);
           break;
         } catch (err) {
@@ -483,6 +484,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           throw err;
         }
       }
+      strictEqual(await app.read(foo)(4), 4);
       strictEqual(errors, 0);
     });
 
