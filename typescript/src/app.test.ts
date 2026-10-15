@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { beforeEach, suite, test } from "node:test";
 import assert, { notStrictEqual, strictEqual } from "node:assert";
 import {
@@ -414,6 +415,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
     await test("resumable loop", async () => {
       class MyError extends Error {}
+      const sentinel = randomInt(1_000_000);
 
       let errors = 5;
 
@@ -433,7 +435,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       while (true) {
         try {
-          await app.schedule(foo, topic)(3);
+          await app.schedule(foo, topic)(sentinel);
           await server.loop(topic, app.handle, async () => {
             return queues[topic]?.pop();
           });
@@ -445,12 +447,13 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           throw err;
         }
       }
-      strictEqual(await app.read(foo)(3), 3);
+      strictEqual(await app.read(foo)(sentinel), sentinel);
       strictEqual(errors, 0);
     });
 
     await test("resumable loop nested", async () => {
       class MyError extends Error {}
+      const sentinel = randomInt(1_000_000);
 
       let errors = 5;
 
@@ -474,7 +477,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
 
       while (true) {
         try {
-          await app.schedule(foo, topic)(4);
+          await app.schedule(foo, topic)(sentinel);
           await server.loop(topic, app.handle, flusher);
           break;
         } catch (err) {
@@ -484,7 +487,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           throw err;
         }
       }
-      strictEqual(await app.read(foo)(4), 4);
+      strictEqual(await app.read(foo)(sentinel), sentinel);
       strictEqual(errors, 0);
     });
 
