@@ -1,6 +1,6 @@
 import hashlib
 import pickle
-from typing import Any
+from typing import Any, override
 
 from brrr.app import ActiveWorker, Task
 
@@ -29,6 +29,7 @@ class DemoPickleCodec(Codec[DemoPickleCodecContext]):
         h.update(repr([task_name, args, list(sorted(kwargs.items()))]).encode())
         return h.hexdigest()
 
+    @override
     def encode_call(
         self, task_name: str, args: tuple[Any, ...], kwargs: dict[Any, Any]
     ) -> Call:
@@ -36,6 +37,7 @@ class DemoPickleCodec(Codec[DemoPickleCodecContext]):
         call_hash = self._hash_call(task_name, args, kwargs)
         return Call(task_name=task_name, payload=payload, call_hash=call_hash)
 
+    @override
     async def invoke_task(
         self,
         call: Call,
@@ -46,5 +48,11 @@ class DemoPickleCodec(Codec[DemoPickleCodecContext]):
         args, kwargs = pickle.loads(call.payload)
         return pickle.dumps(await task(active_worker, *args, **kwargs))
 
+    @override
     def decode_return(self, task_name: str, payload: bytes) -> Any:
         return pickle.loads(payload)
+
+    @override
+    def visibility_timeout(self, call: Call) -> int:
+        # Completely arbitrary: after 10 minutes, consider a call expired.
+        return 60 * 10

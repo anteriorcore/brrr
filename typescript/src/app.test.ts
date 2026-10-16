@@ -288,6 +288,36 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     deepStrictEqual(Object.fromEntries(calls), { one: 50, foo: 51 });
   });
 
+  await test("visibility timeout: zero", async () => {
+    const calls = new Map<number, number>();
+
+    async function foo(app: TestContext, a: number): Promise<number> {
+      calls.set(a, (calls.get(a) || 0) + 1);
+      if (a === 0) {
+        return a;
+      }
+      const results = await app.gather(
+        ...Array(5)
+          .keys()
+          .map(() => app.call(foo)(a - 1)),
+      );
+      return results.reduce((sum, val) => sum + val);
+    }
+
+    const mycodec = Object.create(codec);
+    mycodec.visibilityTimeout = (_: Call) => 0;
+    const brrr = new LocalBrrr(topic, { codec: mycodec, handlers: { foo } });
+    await brrr.run(foo)(3);
+
+    // NOMERGE - needs same barrier logic as python
+    deepStrictEqual(Object.fromEntries(calls), {
+      0: 1,
+      1: 5 * 5 + 1,
+      2: 5 + 1,
+      3: 1 + 1,
+    });
+  });
+
   await test("app handler names", async () => {
     function foo(_: TestContext, a: number): number {
       return a * a;
@@ -738,6 +768,10 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
           // @ts-expect-error type cheat for test.
           const result: string = await handler(call.taskName);
           return encoder.encode(result);
+        }
+
+        public visibilityTimeout(_: Call): number {
+          return 1234;
         }
       }
 

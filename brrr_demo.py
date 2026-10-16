@@ -71,6 +71,9 @@ class DemoJsonKwargsCodec(Codec[DemoContext]):
     def decode_return(self, task_name: str, payload: bytes) -> Any:
         return json.loads(payload.decode())
 
+    def visibility_timeout(self, call: Call) -> int:
+        return 10 * 60
+
     @classmethod
     def _json_bytes(cls, value) -> bytes:
         return json.dumps(value, sort_keys=True).encode()

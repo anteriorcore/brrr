@@ -33,6 +33,7 @@ async def test_conn_raw() -> None:
                                     task_name="inner",
                                     payload=b"inner call payload",
                                 ),
+                                visibility_timeout=1000,
                             ),
                         ]
                     )
@@ -129,6 +130,7 @@ async def test_conn_abandon() -> None:
                             task_name=child_task_name,
                             payload=b"payload",
                         ),
+                        visibility_timeout=1000,
                     ),
                 ]
             )

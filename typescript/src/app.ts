@@ -151,7 +151,11 @@ export class ActiveWorker<C> {
       const call = await this.registry.codec.encodeCall(taskName, args);
       const payload = await this.connection.memory.getValue(call.callHash);
       if (!payload) {
-        throw new Defer({ topic, call });
+        throw new Defer({
+          topic,
+          call,
+          visibilityTimeout: this.registry.codec.visibilityTimeout(call),
+        });
       }
       return this.registry.codec.decodeReturn(taskName, payload) as R;
     };
