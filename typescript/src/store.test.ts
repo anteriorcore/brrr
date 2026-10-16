@@ -11,6 +11,7 @@ import {
   deepStrictEqual,
   doesNotReject,
   ok,
+  partialDeepStrictEqual,
   strictEqual,
 } from "node:assert/strict";
 import {
@@ -365,8 +366,17 @@ export async function storeContractTest(
       };
       const newValue = new Uint8Array([6, 7, 8, 9, 10]);
       await resource.store.set(newKey, newValue);
-      const retrieved = await resource.store.get(newKey);
-      deepStrictEqual(retrieved, newValue);
+      const retrieved1 = await resource.store.get(newKey);
+      deepStrictEqual(retrieved1, newValue);
+
+      const override = new Uint8Array([11, 12]);
+      await resource.store.set(newKey, override);
+      const retrieved2 = await resource.store.get(newKey);
+      // set override semantics are implementation defined
+      partialDeepStrictEqual(
+        new Set([{ results: newValue }, { results: override }]),
+        new Set([{ results: retrieved2 }]),
+      );
     });
 
     await test("Basic delete", async () => {
