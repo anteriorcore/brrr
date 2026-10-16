@@ -35,16 +35,6 @@ await suite(import.meta.filename, async () => {
       deepStrictEqual(original, decoded);
       deepStrictEqual(encoded, decoded.encode());
     });
-
-    await test("Encoded payload with undefined timestamp can be encoded & decoded", async () => {
-      const original = new PendingReturns(undefined, [
-        new PendingReturn("a", "b", "c"),
-      ]);
-      const encoded = original.encode();
-      const decoded = PendingReturns.decode(encoded);
-      deepStrictEqual(original, decoded);
-      deepStrictEqual(encoded, decoded.encode());
-    });
   });
 
   await suite(Memory.name, async () => {
@@ -257,7 +247,7 @@ await suite(import.meta.filename, async () => {
       const pendingReturn2 = new PendingReturn("d", "e", "f");
 
       const unstableFn = mock.fn((returns: Iterable<PendingReturn>) => {
-        const pendingReturns = new PendingReturns(undefined, [
+        const pendingReturns = new PendingReturns(123, [
           pendingReturn1,
           pendingReturn2,
         ]);
@@ -277,7 +267,7 @@ await suite(import.meta.filename, async () => {
       });
 
       await test("invokes f with pending returns and deletes the key", async () => {
-        const pendingReturns = new PendingReturns(undefined, [
+        const pendingReturns = new PendingReturns(456, [
           new PendingReturn("a", "b", "c"),
           new PendingReturn("d", "e", "f"),
         ]);
@@ -298,10 +288,7 @@ await suite(import.meta.filename, async () => {
 
       await test("invokes f but store delete fails and properly dedupes pending returns", async () => {
         const arrayOfPendingReturns = [pendingReturn1];
-        const pendingReturns = new PendingReturns(
-          undefined,
-          arrayOfPendingReturns,
-        );
+        const pendingReturns = new PendingReturns(777, arrayOfPendingReturns);
         await store.set(fixture.pendingReturns.key, pendingReturns.encode());
         await memory.withPendingReturnsRemove(
           fixture.pendingReturns.key.callHash,

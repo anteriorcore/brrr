@@ -53,7 +53,7 @@ class PendingReturns:
     # to determine which pending return record was written later than another or
     # any such event serialization where order matters.  This is for expiring
     # entries in a stale cache, that’s all.
-    scheduled_at: int | None
+    scheduled_at: int
     returns: set[PendingReturn]
 
     def encode(self) -> bytes:
