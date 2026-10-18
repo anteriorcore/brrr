@@ -128,12 +128,8 @@ class DynamoDbMemStore(Store):
     async def set(self, key: MemKey, value: bytes) -> None:
         """DynamoDB set with first-write-wins semantics"""
         try:
-            await self.client.put_item(
-                TableName=self.table_name,
-                Item={**self.key(key), "value": {"B": value}},
-                ConditionExpression="attribute_not_exists(pk)",
-            )
-        except self.client.exceptions.ConditionalCheckFailedException:
+            await self.set_new_value(key, value)
+        except CompareMismatch:
             pass
 
     async def delete(self, key: MemKey) -> None:
@@ -145,13 +141,10 @@ class DynamoDbMemStore(Store):
     async def set_new_value(self, key: MemKey, value: bytes) -> None:
         """Set a value, ensuring none was previously set"""
         try:
-            await self.client.update_item(
+            await self.client.put_item(
                 TableName=self.table_name,
-                Key=self.key(key),
-                UpdateExpression="SET #value = :value",
-                ExpressionAttributeNames={"#value": "value"},
-                ExpressionAttributeValues={":value": {"B": value}},
-                ConditionExpression="attribute_not_exists(#value)",
+                Item={**self.key(key), "value": {"B": value}},
+                ConditionExpression="attribute_not_exists(pk)",
             )
         except self.client.exceptions.ConditionalCheckFailedException as e:
             raise CompareMismatch() from e
