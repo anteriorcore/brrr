@@ -292,7 +292,7 @@ class Memory:
                 continue
 
     async def add_pending_return(
-        self, call_hash: str, new_return: PendingReturn
+        self, call_hash: str, new_return: PendingReturn, visibility_timeout: int
     ) -> bool:
         """Register a pending return address for a call.
 
@@ -305,6 +305,8 @@ class Memory:
         Return value indicates whether we need to schedule this call.
 
         """
+
+        now = int(time.time())
 
         def is_repeated_call(existing: PendingReturn) -> bool:
             return (
@@ -324,13 +326,15 @@ class Memory:
                 logger.debug(f"    ... found! {existing_enc!r}")
                 existing = PendingReturns.decode(existing_enc)
             except NotFoundError:
-                existing = PendingReturns(int(time.time()), {new_return})
+                existing = PendingReturns(now, {new_return})
                 existing_enc = existing.encode()
                 logger.debug(f"    ... none found. Creating new: {existing_enc!r}")
                 await self.store.set_new_value(memkey, existing_enc)
                 return True
 
-            should_schedule = any(map(is_repeated_call, existing.returns))
+            in_progress_stale = now - existing.scheduled_at >= visibility_timeout
+            has_repeated_call = any(map(is_repeated_call, existing.returns))
+            should_schedule = in_progress_stale or has_repeated_call
             existing.returns.add(new_return)
             await self.store.compare_and_set(memkey, existing.encode(), existing_enc)
             return should_schedule

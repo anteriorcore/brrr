@@ -294,21 +294,21 @@ class MemoryContract(ByteStoreContract):
             )
 
             # base case
-            assert await memory.add_pending_return(call_hash, one)
+            assert await memory.add_pending_return(call_hash, one, 1000)
             # same one, shouldn't schedule again
-            assert not await memory.add_pending_return(call_hash, one)
+            assert not await memory.add_pending_return(call_hash, one, 1000)
             # different root, should schedule - it's a retry
             two = dataclasses.replace(one, root_id="different")
-            assert await memory.add_pending_return(call_hash, two)
+            assert await memory.add_pending_return(call_hash, two, 1000)
             # new callHash, new PR, should schedule
-            assert await memory.add_pending_return("different-hash", one)
+            assert await memory.add_pending_return("different-hash", one, 1000)
             # continuation, shouldn't schedule again
             three = dataclasses.replace(one, topic="different")
-            assert not await memory.add_pending_return(call_hash, three)
+            assert not await memory.add_pending_return(call_hash, three, 1000)
             four = dataclasses.replace(one, call_hash="different")
-            assert not await memory.add_pending_return(call_hash, four)
+            assert not await memory.add_pending_return(call_hash, four, 1000)
             five = dataclasses.replace(one, call_hash="one", topic="two")
-            assert not await memory.add_pending_return(call_hash, five)
+            assert not await memory.add_pending_return(call_hash, five, 1000)
 
             with pytest.raises(FakeError):
 

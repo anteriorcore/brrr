@@ -88,4 +88,9 @@ export class DemoJsonCodec implements Codec<DemoJsonCodecContext> {
       ]);
     return Object.fromEntries(entries);
   }
+
+  public visibilityTimeout(_: Call): number {
+    // Totally arbitrary heuristic: tasks are stale after 10 minutes.
+    return 10 * 60;
+  }
 }

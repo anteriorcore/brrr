@@ -127,7 +127,10 @@ await suite(import.meta.filename, async () => {
         ] as const;
 
         for (const [hash, pr, shouldSchedule] of cases) {
-          strictEqual(await memory.addPendingReturns(hash, pr), shouldSchedule);
+          strictEqual(
+            await memory.addPendingReturns(hash, pr, 1000),
+            shouldSchedule,
+          );
         }
 
         // ensure all returns are stored
@@ -145,6 +148,7 @@ await suite(import.meta.filename, async () => {
         const shouldSchedule = await memory.addPendingReturns(
           fixture.call.callHash,
           fixture.newReturn,
+          1000,
         );
         ok(shouldSchedule);
         const raw = await store.get({
@@ -165,10 +169,12 @@ await suite(import.meta.filename, async () => {
         await memory.addPendingReturns(
           fixture.call.callHash,
           fixture.newReturn,
+          1000,
         );
         const shouldSchedule = await memory.addPendingReturns(
           fixture.call.callHash,
           fixture.newReturn,
+          1000,
         );
         ok(!shouldSchedule);
         const raw = await store.get({
@@ -187,6 +193,7 @@ await suite(import.meta.filename, async () => {
         await memory.addPendingReturns(
           fixture.call.callHash,
           fixture.newReturn,
+          1000,
         );
         const completelyDifferentReturn = new PendingReturn(
           "completely",
@@ -196,6 +203,7 @@ await suite(import.meta.filename, async () => {
         const shouldSchedule = await memory.addPendingReturns(
           fixture.call.callHash,
           completelyDifferentReturn,
+          1000,
         );
         ok(!shouldSchedule);
         const raw = await store.get({
@@ -223,6 +231,7 @@ await suite(import.meta.filename, async () => {
         const shouldSchedule = await memory.addPendingReturns(
           fixture.call.callHash,
           returnWithDifferentRoot,
+          1000,
         );
         ok(shouldSchedule);
         const raw = await store.get({
