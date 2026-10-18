@@ -4,7 +4,7 @@ import { CasRetryLimitReachedError, NotFoundError } from "./errors.ts";
 import { PendingReturn, TaggedTuple } from "./tagged-tuple.ts";
 
 export interface PendingReturnsPayload {
-  readonly scheduled_at: number | undefined;
+  readonly scheduled_at: number;
   readonly returns: unknown[][];
 }
 
@@ -22,13 +22,10 @@ export interface PendingReturnsPayload {
  * <docsync>PendingReturns</docsync>
  */
 export class PendingReturns {
-  public readonly scheduledAt: number | undefined;
+  public readonly scheduledAt: number;
   public readonly encodedReturns: ReadonlySet<string>;
 
-  public constructor(
-    scheduledAt: number | undefined,
-    returns: Iterable<PendingReturn>,
-  ) {
+  public constructor(scheduledAt: number, returns: Iterable<PendingReturn>) {
     this.scheduledAt = scheduledAt;
     this.encodedReturns = new Set([...returns].map(TaggedTuple.encodeToString));
   }

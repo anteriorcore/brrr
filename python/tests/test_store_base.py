@@ -58,9 +58,8 @@ async def test_memory_cas() -> None:
     "scheduled_at,returns",
     [
         (1000, {"a", "b", "c"}),
-        (None, {"x", "y"}),
         (2000, {"single"}),
-        (None, set()),
+        (1234, set()),
     ],
 )
 async def test_encode_decode_mixed_cases(scheduled_at: int, returns: set[str]) -> None:
