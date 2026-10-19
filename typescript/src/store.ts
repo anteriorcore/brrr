@@ -189,28 +189,31 @@ export class Memory {
   public async addPendingReturns(
     callHash: string,
     newReturn: PendingReturn,
+    visibilityTimeout: number,
   ): Promise<boolean> {
     const memKey: MemKey = {
       type: "pending_returns",
       callHash: callHash,
     };
     let shouldSchedule = false;
+    const now = Math.floor(Date.now() / 1000);
     await this.withCas(async () => {
       shouldSchedule = false;
       const existingEncoded = await this.store.get(memKey);
       if (!existingEncoded) {
-        const newReturns = new PendingReturns(Math.floor(Date.now() / 1000), [
-          newReturn,
-        ]);
+        const newReturns = new PendingReturns(now, [newReturn]);
         shouldSchedule = true;
         return await this.store.setNewValue(memKey, newReturns.encode());
       }
       const pendingReturns = PendingReturns.decode(existingEncoded);
-      shouldSchedule = [...pendingReturns.encodedReturns].some((it) =>
+      const inProgressStale =
+        now - pendingReturns.scheduledAt >= visibilityTimeout;
+      const hasRepeatedCall = [...pendingReturns.encodedReturns].some((it) =>
         TaggedTuple.decodeFromString(PendingReturn, it).isRepeatedCall(
           newReturn,
         ),
       );
+      shouldSchedule = inProgressStale || hasRepeatedCall;
       const newReturns = new PendingReturns(
         pendingReturns.scheduledAt,
         pendingReturns.encodedReturns

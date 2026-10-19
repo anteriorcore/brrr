@@ -37,6 +37,36 @@ import { decoder, encoder } from "./internal-codecs.ts";
 
 type TestContext = DemoJsonCodecContext;
 
+/**
+ * Barrier lock.  Compare to python's asyncio.Barrier.
+ */
+class Barrier {
+  private count: number;
+  private resolve: () => void;
+  private promise: Promise<void>;
+
+  constructor(count: number) {
+    this.count = count;
+    let resolve: null | (() => void) = null;
+    this.promise = new Promise<void>((x) => (resolve = x));
+    if (!resolve) {
+      throw new Error("assertion failed");
+    }
+    this.resolve = resolve;
+  }
+
+  wait(): Promise<void> {
+    if (this.count === 0) {
+      return Promise.reject(new Error("Barrier awaited >n times"));
+    }
+    this.count--;
+    if (this.count === 0) {
+      this.resolve();
+    }
+    return this.promise;
+  }
+}
+
 matrixSuite(import.meta.filename, async (_, matrix) => {
   const codec = new DemoJsonCodec();
   const topic = matrix.topic;
@@ -286,6 +316,45 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
     await brrr.run(foo)(50);
 
     deepStrictEqual(Object.fromEntries(calls), { one: 50, foo: 51 });
+  });
+
+  test("visibility timeout: zero", async (t) => {
+    const barriers: Record<number, Barrier | null> = {
+      0: new Barrier(1),
+      1: new Barrier(5 * 5),
+      2: new Barrier(5),
+      3: new Barrier(1),
+    };
+    const calls = new Map<number, number>();
+
+    async function foo(app: TestContext, a: number): Promise<number> {
+      calls.set(a, (calls.get(a) || 0) + 1);
+      const barrier = barriers[a];
+      if (barrier) {
+        await barrier.wait();
+      }
+      barriers[a] = null;
+      if (a === 0) {
+        return a;
+      }
+      const results = await app.gather(
+        ...Array(5)
+          .keys()
+          .map(() => app.call(foo)(a - 1)),
+      );
+      return results.reduce((sum, val) => sum + val);
+    }
+
+    const mycodec = Object.create(codec);
+    mycodec.visibilityTimeout = (_: Call) => 0;
+    const brrr = new LocalBrrr(topic, { codec: mycodec, handlers: { foo } });
+    await brrr.run(foo)(3);
+
+    // Inherently racy, but that’s the point of the test.
+    ok(calls.get(0)! >= 1);
+    ok(calls.get(1)! >= 5 * 5 + 1);
+    ok(calls.get(2)! >= 5 + 1);
+    ok(calls.get(3)! >= 1 + 1);
   });
 
   test("app handler names", async () => {
@@ -738,6 +807,10 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
           // @ts-expect-error type cheat for test.
           const result: string = await handler(call.taskName);
           return encoder.encode(result);
+        }
+
+        public visibilityTimeout(_: Call): number {
+          return 1234;
         }
       }
 

@@ -34,6 +34,7 @@ class DeferredCall:
     # None means self
     topic: str | None
     call: Call
+    visibility_timeout: int
 
 
 class Defer(Exception):
@@ -259,16 +260,17 @@ class Server(Connection):
         # because it will then immediately call this parent flow back, which is
         # fine because the result does in fact exist.
         child_topic = child.topic or my_topic
-        call_hash = child.call.call_hash
         ret = PendingReturn(
             root_id=parent.root_id,
             call_hash=parent.call_hash,
             topic=my_topic,
         )
-        should_schedule = await self._memory.add_pending_return(call_hash, ret)
+        should_schedule = await self._memory.add_pending_return(
+            child.call.call_hash, ret, child.visibility_timeout
+        )
         if should_schedule:
             job = ScheduleMessage(
-                call_hash=call_hash,
+                call_hash=child.call.call_hash,
                 root_id=parent.root_id,
             )
             await self._put_job(child_topic, job)
