@@ -60,7 +60,7 @@ class PendingReturns:
         x: bytes = _bc.encode(
             {
                 "returns": list(sorted(map(lambda x: x.astuple(), self.returns))),
-                **({"scheduled_at": self.scheduled_at} if self.scheduled_at else {}),
+                "scheduled_at": self.scheduled_at,
             }
         )
         return x
@@ -70,7 +70,7 @@ class PendingReturns:
         decoded = _bc.decode(enc)
         returns = decoded["returns"]
         return cls(
-            decoded.get("scheduled_at"),
+            decoded["scheduled_at"],
             set(map(PendingReturn.fromtuple, returns)),
         )
 
