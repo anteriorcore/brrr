@@ -9,6 +9,7 @@ import { PendingReturn, ScheduleMessage, TaggedTuple } from "./tagged-tuple.ts";
 export interface DeferredCall {
   readonly topic: string | undefined;
   readonly call: Call;
+  readonly visibilityTimeout: number;
 }
 
 export class Defer {
@@ -181,6 +182,7 @@ export class Server extends Connection {
     const shouldSchedule = await this.memory.addPendingReturns(
       callHash,
       pendingReturn,
+      child.visibilityTimeout,
     );
     if (shouldSchedule) {
       const job = new ScheduleMessage(parent.rootId, callHash);

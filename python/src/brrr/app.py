@@ -172,7 +172,12 @@ class ActiveWorker[C]:
             try:
                 payload = await self._connection._memory.get_value(call.call_hash)
             except NotFoundError:
-                raise Defer([DeferredCall(topic, call)])
+                deferral = DeferredCall(
+                    topic=topic,
+                    call=call,
+                    visibility_timeout=self._registry.codec.visibility_timeout(call),
+                )
+                raise Defer([deferral])
             else:
                 return self._registry.codec.decode_return(task_name, payload)
 

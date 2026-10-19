@@ -3,6 +3,7 @@ import dataclasses
 import typing
 import uuid
 from collections import Counter
+from collections.abc import MutableMapping
 from typing import Any, cast, override
 from unittest.mock import AsyncMock
 
@@ -577,6 +578,53 @@ async def test_no_debounce_parent(topic: str) -> None:
     assert calls["parent"] > 2
 
 
+async def test_visibility_timeout_zero(topic: str, task_name: str) -> None:
+    """A visibility timeout of zero is functionally equivalent to never
+    debouncing child calls (as long as the clocks are synchronized, which they
+    are in this case).
+
+    """
+    store = InMemoryByteStore()
+    queue = CloseOnSilenceQueue([topic])
+    calls = Counter[int]()
+    p = 5
+    N = 3
+    # No debouncing:
+    expected = {i: 1 if i == 0 else p ** (N - i) for i in range(N + 1)}
+    barriers: MutableMapping[int, None | asyncio.Barrier] = {
+        k: asyncio.Barrier(v) for k, v in expected.items()
+    }
+
+    async def foo(app: TestContext, a: int) -> int:
+        calls[a] += 1
+        if (barrier := barriers.get(a)) is not None:
+            await barrier.wait()
+        barriers[a] = None
+        if a == 0:
+            return a
+
+        return sum(await app.gather(*map(app.call(foo), [a - 1] * p)))
+
+    class TimeoutCodec(DemoPickleCodec):
+        @override
+        def visibility_timeout(self, _: Call) -> int:
+            return 0
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={task_name: foo},
+            codec=TimeoutCodec(),
+            connection=conn,
+        )
+        await app.schedule(foo, topic=topic)(N)
+        await asyncio.gather(
+            *(conn.loop(topic, app.handle) for _ in range(max(expected.values())))
+        )
+
+    # +1 for every parent callback
+    assert calls == {k: v + (0 if k == 0 else 1) for k, v in expected.items()}
+
+
 async def test_app_loop_resumable(topic: str) -> None:
     store = InMemoryByteStore()
     queue = CloseOnEmptyQueue([topic])
@@ -732,6 +780,9 @@ async def test_custom_context(topic: str) -> None:
 
         def decode_return(self, task_name: str, payload: bytes) -> Any:
             return payload.decode("utf-8")
+
+        def visibility_timeout(self, call: Call) -> int:
+            return 1234
 
     async def foo(ctx: str) -> str:
         return ctx
