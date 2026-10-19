@@ -37,7 +37,7 @@ import { decoder, encoder } from "./internal-codecs.ts";
 
 type TestContext = DemoJsonCodecContext;
 
-await matrixSuite(import.meta.filename, async (_, matrix) => {
+matrixSuite(import.meta.filename, async (_, matrix) => {
   const codec = new DemoJsonCodec();
   const topic = matrix.topic;
   const subtopics = {
@@ -92,7 +92,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     server = new SubscriberServer(store, cache, emitter);
   });
 
-  await test(AppWorker.name, async () => {
+  test(AppWorker.name, async () => {
     const app = new AppWorker(codec, server, handlers);
     server.listen(topic, app.handle);
 
@@ -110,7 +110,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     return done;
   });
 
-  await test(AppConsumer.name, async () => {
+  test(AppConsumer.name, async () => {
     function foo(_: TestContext, n: number) {
       return n * n;
     }
@@ -132,12 +132,12 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     return done;
   });
 
-  await test(LocalBrrr.name, async () => {
+  test(LocalBrrr.name, async () => {
     const brrr = new LocalBrrr(topic, { handlers, codec });
     strictEqual(await brrr.run(foo)(122), 457);
   });
 
-  await suite("gather", async () => {
+  suite("gather", async () => {
     async function callNestedGather(useBrrGather = true): Promise<string[]> {
       const calls: string[] = [];
 
@@ -172,7 +172,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       return calls;
     }
 
-    await test("app gather", async () => {
+    test("app gather", async () => {
       const brrrCalls = await callNestedGather();
       strictEqual(brrrCalls.filter((it) => it.startsWith("top")).length, 5);
       const foo3 = brrrCalls.indexOf("foo(3)");
@@ -185,7 +185,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       ok(foo4 < bar8);
     });
 
-    await test("Promise.all gather", async () => {
+    test("Promise.all gather", async () => {
       const promises = await callNestedGather(false);
       strictEqual(promises.filter((it) => it.startsWith("top")).length, 5);
       const foo3 = promises.indexOf("foo(3)");
@@ -197,7 +197,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     });
   });
 
-  await test("topics separate app same connection", async () => {
+  test("topics separate app same connection", async () => {
     const app1 = new AppWorker(codec, server, { one });
     const app2 = new AppWorker(codec, server, { two });
 
@@ -213,7 +213,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     return done;
   });
 
-  await test("topics separate app separate connection", async () => {
+  test("topics separate app separate connection", async () => {
     const server1 = new SubscriberServer(store, cache, emitter);
     const server2 = new SubscriberServer(store, cache, emitter);
     const app1 = new AppWorker(codec, server1, { one });
@@ -230,7 +230,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     return done;
   });
 
-  await test("topics same app", async () => {
+  test("topics same app", async () => {
     const app = new AppWorker(codec, server, { one, two });
     server.listen(subtopics.t1, app.handle);
     server.listen(subtopics.t2, app.handle);
@@ -241,7 +241,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     await waitFor(call);
   });
 
-  await test("debounce child", async () => {
+  test("debounce child", async () => {
     const calls = new Map<number, number>();
 
     async function foo(app: TestContext, a: number): Promise<number> {
@@ -263,7 +263,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     deepStrictEqual(Object.fromEntries(calls), { 0: 1, 1: 2, 2: 2, 3: 2 });
   });
 
-  await test("no debounce parent", async () => {
+  test("no debounce parent", async () => {
     const calls = new Map<string, number>();
 
     function one(_ctx: TestContext, _a: number): number {
@@ -288,7 +288,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     deepStrictEqual(Object.fromEntries(calls), { one: 50, foo: 51 });
   });
 
-  await test("app handler names", async () => {
+  test("app handler names", async () => {
     function foo(_: TestContext, a: number): number {
       return a * a;
     }
@@ -317,7 +317,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     return done;
   });
 
-  await suite("loop mode", async () => {
+  suite("loop mode", async () => {
     let queues: Record<string, (string | typeof BrrrShutdownSymbol)[]>;
     let server: Server;
 
@@ -342,7 +342,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       server = new Server(store, cache, publisher);
     });
 
-    await test("basic loop", async () => {
+    test("basic loop", async () => {
       async function foo(app: TestContext, a: number) {
         return (await app.call(bar, topic)(a + 1)) + 1;
       }
@@ -357,7 +357,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(await app.read(foo)(122), 457);
     });
 
-    await test("no reschedule cached call", async () => {
+    test("no reschedule cached call", async () => {
       const calls: string[] = [];
       function foo(_: TestContext, n: number) {
         calls.push(`foo(${n})`);
@@ -378,7 +378,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(calls.length, 1);
     });
 
-    await test("abandon", async () => {
+    test("abandon", async () => {
       async function fib(app: TestContext, n: number): Promise<number> {
         if (n == 0) return 0;
         if (n == 1) return 1;
@@ -398,7 +398,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       await rejects(app.read(fib)(-4), NotFoundError);
     });
 
-    await test("loop with no tasks", async () => {
+    test("loop with no tasks", async () => {
       const app = new AppWorker(codec, server, handlers);
 
       let looped = false;
@@ -413,7 +413,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       ok(looped);
     });
 
-    await test("resumable loop", async () => {
+    test("resumable loop", async () => {
       class MyError extends Error {}
       const sentinel = randomInt(1_000_000);
 
@@ -451,7 +451,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(errors, 0);
     });
 
-    await test("resumable loop nested", async () => {
+    test("resumable loop nested", async () => {
       class MyError extends Error {}
       const sentinel = randomInt(1_000_000);
 
@@ -491,7 +491,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(errors, 0);
     });
 
-    await test("stress parallel", async () => {
+    test("stress parallel", async () => {
       async function fib(app: TestContext, n: bigint): Promise<bigint> {
         if (n < 2) {
           return n;
@@ -520,7 +520,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       );
     });
 
-    await test("app subclass", async () => {
+    test("app subclass", async () => {
       function bar(_: TestContext, a: number): number {
         return a + 1;
       }
@@ -558,8 +558,8 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(await app.read(foo)(4), 14);
     });
 
-    await suite("spawn limit", async () => {
-      await test("spawn limit depth", async () => {
+    suite("spawn limit", async () => {
+      test("spawn limit depth", async () => {
         let n = 0;
 
         async function foo(app: TestContext, a: number): Promise<number> {
@@ -583,7 +583,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         strictEqual(n, server.spawnLimit);
       });
 
-      await test("spawn limit recoverable", async () => {
+      test("spawn limit recoverable", async () => {
         function one(_ctx: TestContext, _a: number): number {
           return 1;
         }
@@ -624,7 +624,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         strictEqual(await app.read(foo)(n), n);
       });
 
-      await test("spawn limit breadth mapped", async () => {
+      test("spawn limit breadth mapped", async () => {
         const calls = new Map<string, number>();
 
         function one(_ctx: TestContext, _a: number): number {
@@ -647,7 +647,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         strictEqual(calls.get(foo.name), 1);
       });
 
-      await test("spawn limit breadth manual", async () => {
+      test("spawn limit breadth manual", async () => {
         const calls = new Map<string, number>();
 
         function one(_ctx: TestContext, _a: number): number {
@@ -680,7 +680,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
         });
       });
 
-      await test("spawn limit cached", async () => {
+      test("spawn limit cached", async () => {
         let n = 0;
         let final = undefined;
 
@@ -712,7 +712,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       });
     });
 
-    await test("custom context", async () => {
+    test("custom context", async () => {
       // Inject task name as a custom context.
 
       class MyCodec implements Codec<string> {
@@ -761,7 +761,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
     });
   });
 
-  await suite("signal task", async () => {
+  suite("signal task", async () => {
     let queues: Record<string, (string | typeof BrrrShutdownSymbol)[]>;
     store = new InMemoryStore();
     cache = new InMemoryCache();
@@ -800,7 +800,7 @@ await matrixSuite(import.meta.filename, async (_, matrix) => {
       };
     });
 
-    await test("no more sub tasks run after cancel", async () => {
+    test("no more sub tasks run after cancel", async () => {
       let calls: string[] = [];
 
       async function strlen(_: TestContext, a: number): Promise<number> {

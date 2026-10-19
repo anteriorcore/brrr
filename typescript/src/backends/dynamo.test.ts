@@ -4,8 +4,8 @@ import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { Dynamo } from "./dynamo.ts";
 import { randomUUID } from "node:crypto";
 
-await suite(import.meta.filename, async () => {
-  await test("Retry DynamoDB GET on not found", async () => {
+suite(import.meta.filename, async () => {
+  test("Retry DynamoDB GET on not found", async () => {
     let callCount = 0;
     const mockClient = {
       send: mock.fn(async () => {
@@ -26,7 +26,7 @@ await suite(import.meta.filename, async () => {
     deepStrictEqual(result, new Uint8Array([1, 2, 3]));
     strictEqual(callCount, 2);
   });
-  await test("Don't retry DynamoDB GET on found", async () => {
+  test("Don't retry DynamoDB GET on found", async () => {
     const mockClient = {
       send: mock.fn(async () => {
         return { Item: { value: new Uint8Array([1, 2, 3]) } };

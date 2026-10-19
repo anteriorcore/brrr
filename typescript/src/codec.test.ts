@@ -7,7 +7,7 @@ export async function codecContractTest<C>(
   codec: Codec<C>,
   contextFactory: () => C,
 ) {
-  await suite("store-contract", async () => {
+  suite("store-contract", async () => {
     const cases: Record<string, [unknown[], unknown[]]> = {
       simple: [
         [1, 2],
@@ -47,9 +47,9 @@ export async function codecContractTest<C>(
       ],
     } as const;
 
-    await suite("deterministic call hash", async () => {
+    suite("deterministic call hash", async () => {
       for (const [name, args] of Object.entries(cases)) {
-        await test(name, async () => {
+        test(name, async () => {
           // sanity check
           deepStrictEqual(...args);
 
@@ -61,32 +61,29 @@ export async function codecContractTest<C>(
       }
     });
 
-    await suite(
-      "round trip: encodeCall -> invokeTask -> decodeReturn",
-      async () => {
-        async function identify<T>(_: C, a: T): Promise<T> {
-          return a;
-        }
+    suite("round trip: encodeCall -> invokeTask -> decodeReturn", async () => {
+      async function identify<T>(_: C, a: T): Promise<T> {
+        return a;
+      }
 
-        for (const [name, args] of Object.entries(cases)) {
-          await test(name, async () => {
-            const call = await codec.encodeCall(identify.name, [args[0]]);
-            const context = contextFactory();
-            const result = await codec.invokeTask(
-              call,
-              identify,
-              // @ts-expect-error type cheat for test
-              () => null as ActiveWorker,
-              new Uint8Array(),
-            );
-            const decoded = await codec.decodeReturn(identify.name, result);
-            deepStrictEqual(decoded, await identify(context, args[1]));
-          });
-        }
-      },
-    );
+      for (const [name, args] of Object.entries(cases)) {
+        test(name, async () => {
+          const call = await codec.encodeCall(identify.name, [args[0]]);
+          const context = contextFactory();
+          const result = await codec.invokeTask(
+            call,
+            identify,
+            // @ts-expect-error type cheat for test
+            () => null as ActiveWorker,
+            new Uint8Array(),
+          );
+          const decoded = await codec.decodeReturn(identify.name, result);
+          deepStrictEqual(decoded, await identify(context, args[1]));
+        });
+      }
+    });
 
-    await test("different arguments produce different hashes", async () => {
+    test("different arguments produce different hashes", async () => {
       const a = await codec.encodeCall("foo", [1, 2]);
       const b = await codec.encodeCall("foo", [2, 1]);
       const c = await codec.encodeCall("bar", [1, 2]);

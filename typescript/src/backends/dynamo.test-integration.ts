@@ -5,7 +5,7 @@ import { storeContractTest } from "../store.test.ts";
 import { randomUUID } from "node:crypto";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
-await suite(import.meta.filename, async () => {
+suite(import.meta.filename, async () => {
   const client = DynamoDBDocumentClient.from(new DynamoDBClient());
 
   await storeContractTest(async () => {
