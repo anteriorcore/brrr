@@ -4,7 +4,7 @@ import { throws } from "node:assert";
 import { MalformedTaggedTupleError, TagMismatchError } from "./errors.ts";
 import { TaggedTuple } from "./tagged-tuple.ts";
 
-await suite(import.meta.filename, async () => {
+suite(import.meta.filename, async () => {
   class Foo {
     public static readonly tag = 0;
 
@@ -17,27 +17,27 @@ await suite(import.meta.filename, async () => {
     }
   }
 
-  await suite("fromTuple", async () => {
-    await test("create instance", async () => {
+  suite("fromTuple", async () => {
+    test("create instance", async () => {
       const foo = TaggedTuple.fromTuple(Foo, [0, 42, "hello"]);
       ok(foo instanceof Foo);
       ok(foo.bar === 42);
       ok(foo.baz === "hello");
     });
-    await test("tag mismatch", async () => {
+    test("tag mismatch", async () => {
       throws(
         () => TaggedTuple.fromTuple(Foo, [1, 42, "hello"]),
         TagMismatchError,
       );
     });
-    await test("too many args", async () => {
+    test("too many args", async () => {
       throws(
         // @ts-expect-error testing runtime error
         () => TaggedTuple.fromTuple(Foo, [0, 42, "hello", "a"]),
         MalformedTaggedTupleError,
       );
     });
-    await test("too few args", async () => {
+    test("too few args", async () => {
       throws(
         // @ts-expect-error testing runtime error
         () => TaggedTuple.fromTuple(Foo, [0, 42]),
@@ -46,21 +46,21 @@ await suite(import.meta.filename, async () => {
     });
   });
 
-  await suite("asTuple", async () => {
-    await test("basic", async () => {
+  suite("asTuple", async () => {
+    test("basic", async () => {
       const foo: Foo = TaggedTuple.fromTuple(Foo, [0, 42, "hello"]);
       deepStrictEqual(TaggedTuple.asTuple(foo), [0, 42, "hello"]);
     });
   });
 
-  await suite("encode and decode", async () => {
+  suite("encode and decode", async () => {
     const foo: Foo = TaggedTuple.fromTuple(Foo, [0, 42, "hello"]);
     const encoded: Uint8Array = TaggedTuple.encode(foo);
     const decoded = TaggedTuple.decode(Foo, encoded);
     deepStrictEqual(decoded, foo);
   });
 
-  await suite("encode and decode (string)", async () => {
+  suite("encode and decode (string)", async () => {
     const foo: Foo = TaggedTuple.fromTuple(Foo, [0, 42, "hello"]);
     const encoded: string = TaggedTuple.encodeToString(foo);
     const decoded = TaggedTuple.decodeFromString(Foo, encoded);

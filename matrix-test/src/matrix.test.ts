@@ -9,8 +9,8 @@ function deepStrictEqualWithTypes<const T>(actual: T, expected: T): void {
   deepStrictEqual(actual, expected);
 }
 
-await suite(import.meta.filename, async () => {
-  await test("basic object", async () => {
+suite(import.meta.filename, async () => {
+  test("basic object", async () => {
     const object = {
       a: [1, 2],
       b: ["x", "y"],
@@ -23,7 +23,7 @@ await suite(import.meta.filename, async () => {
     ]);
   });
 
-  await test("single", async () => {
+  test("single", async () => {
     const object = {
       color: ["red", "blue", "green"],
     };
@@ -34,12 +34,12 @@ await suite(import.meta.filename, async () => {
     ]);
   });
 
-  await test("empty", async () => {
+  test("empty", async () => {
     const object = {};
     deepStrictEqualWithTypes(combinations(object), [{}]);
   });
 
-  await test("single value arrays", async () => {
+  test("single value arrays", async () => {
     const object = {
       os: ["linux"],
       arch: ["x64"],
@@ -50,7 +50,7 @@ await suite(import.meta.filename, async () => {
     ]);
   });
 
-  await test("multiple properties", async () => {
+  test("multiple properties", async () => {
     const object = {
       os: ["linux", "windows"],
       arch: ["x64", "arm64"],
@@ -68,7 +68,7 @@ await suite(import.meta.filename, async () => {
     ]);
   });
 
-  await test("mixed types", async () => {
+  test("mixed types", async () => {
     const object = {
       string: ["hello", "world"],
       number: [1, 2, 3],
@@ -90,7 +90,7 @@ await suite(import.meta.filename, async () => {
     ]);
   });
 
-  await test("empty array", async () => {
+  test("empty array", async () => {
     const object = {
       empty: [],
       normal: ["a", "b"],

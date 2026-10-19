@@ -6,7 +6,7 @@ import { Redis } from "./redis.ts";
 import { cacheContractTest } from "../store.test.ts";
 import { matrixSuite } from "../fixture.test.ts";
 
-await suite(import.meta.filename, async () => {
+suite(import.meta.filename, async () => {
   async function acquireResource() {
     ok(env.BRRR_TEST_REDIS_URL);
     const client = createClientPool(
@@ -34,13 +34,13 @@ await suite(import.meta.filename, async () => {
   await matrixSuite("as message queue", async (_, matrix) => {
     const message = "some-message";
 
-    await test("push & pop message", async () => {
+    test("push & pop message", async () => {
       await using resource = await acquireResource();
       await resource.cache.push(matrix.topic, message);
       strictEqual(await resource.cache.pop(matrix.topic), message);
     });
 
-    await test("FIFO", async () => {
+    test("FIFO", async () => {
       await using resource = await acquireResource();
       const messages = ["first", "second", "third"];
       for (const message of messages) {
@@ -51,7 +51,7 @@ await suite(import.meta.filename, async () => {
       }
     });
 
-    await test("pop before push", async () => {
+    test("pop before push", async () => {
       await using resource = await acquireResource();
       const popped = resource.cache.pop(matrix.topic);
       await resource.cache.push(matrix.topic, message);

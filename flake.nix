@@ -352,7 +352,7 @@
                         category = "test";
                         help = "Tests which don't need dependencies";
                         command = ''
-                          npm run test
+                          npm run test -- "$@"
                         '';
                       }
                       {
@@ -362,7 +362,7 @@
                         command = ''
                           (
                             ${mkEnvs (sharedEnvs // { AWS_REGION = "us-east-1"; })}
-                            npm run test:integration
+                            npm run test:integration -- "$@"
                           )'';
                       }
                     ]
