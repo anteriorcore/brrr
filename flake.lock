@@ -53,11 +53,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1788342953,
-        "narHash": "sha256-EWkNM4JzBhZ/Yn1PG6lP4/QJuFAFeHYlY5gVxXu940Y=",
+        "lastModified": 1791837366,
+        "narHash": "sha256-nFx8lLX5lVEqsZSykAn8Ij/pp5sWwaIDFgI2WW/tk2k=",
         "owner": "numtide",
         "repo": "devshell",
-        "rev": "a67c0f87b63bcbdbdcb56785bec0205a2e3d6026",
+        "rev": "d9e4ae2f689f9c87d4e302ca13d8b665ccbe9167",
         "type": "github"
       },
       "original": {
