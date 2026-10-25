@@ -5,7 +5,7 @@ import uuid
 from collections import Counter
 from collections.abc import MutableMapping
 from typing import Any, cast, override
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import aioboto3
 import brrr
@@ -576,6 +576,56 @@ async def test_no_debounce_parent(topic: str) -> None:
     # finished child puts parent back on the queue without checking if it's
     # already there.
     assert calls["parent"] > 2
+
+
+async def test_visibility_timeout(topic: str, task_name: str) -> None:
+    calls = Counter[str]()
+    store = InMemoryByteStore()
+    queue = CloseOnSilenceQueue([topic])
+    name_foo, name_bar = names(task_name, ("foo", "bar"))
+    barrier = asyncio.Barrier(2)
+    cast(Any, store).now = Mock(return_value=0)
+
+    async def bar(_: TestContext, a: int) -> int:
+        calls["bar"] += 1
+        await barrier.wait()
+        return a
+
+    async def foo(app: TestContext, a: int) -> int:
+        calls["foo"] += 1
+        return await app.call(bar)(1) * a
+
+    async def schedule_now(n: int) -> None:
+        await app.schedule(foo, topic=topic)(n)
+
+    async def schedule_future(n: int) -> None:
+        """Wait until everything has settled, fast-forward the clock, and reschedule"""
+        # this is "probably enough", but not so long that it triggers the
+        # CloseOnSilenceQueue
+        await asyncio.sleep(0.1)
+        cast(Mock, store.now).return_value = 1_000_000_000
+        await schedule_now(n)
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={name_foo: foo, name_bar: bar},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await schedule_now(3)
+        await schedule_now(4)
+        await asyncio.gather(
+            # Ensure enough parallel workers to allow concurrency if debouncing
+            # didn’t work.
+            conn.loop(topic, app.handle),
+            conn.loop(topic, app.handle),
+            conn.loop(topic, app.handle),
+            schedule_future(3),
+        )
+        assert await app.read(foo)(3) == 3
+
+    # foo gets 3 schedules, 2 returns
+    assert calls == Counter({"foo": 3 + 2, "bar": 2})
 
 
 async def test_visibility_timeout_zero(topic: str, task_name: str) -> None:
