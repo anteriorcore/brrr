@@ -159,6 +159,15 @@ class Store(ABC):
         """
         raise NotImplementedError()
 
+    def now(self) -> int:
+        """Unix time in seconds.
+
+        Accuracy is up to the implementation.  Used for expiring stale pending
+        returns.  Default implementation is fine.
+
+        """
+        return int(time.time())
+
 
 class Cache(ABC):
     """A best-effort store for light-weight, non-critical data.
@@ -306,7 +315,7 @@ class Memory:
 
         """
 
-        now = int(time.time())
+        now = self.store.now()
 
         def is_repeated_call(existing: PendingReturn) -> bool:
             return (
