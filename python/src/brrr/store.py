@@ -320,15 +320,19 @@ class Memory:
         async def cas_body() -> bool:
             memkey = MemKey("pending_returns", call_hash)
 
-            logger.debug(f"Looking for existing pending returns for {call_hash}...")
+            debug_msg = [f"Looking for existing pending returns for {call_hash}..."]
             try:
                 existing_enc = await self.store.get(memkey)
-                logger.debug(f"    ... found! {existing_enc!r}")
+                debug_msg.append(f"found! {existing_enc!r}")
                 existing = PendingReturns.decode(existing_enc)
             except NotFoundError:
                 existing = PendingReturns(now, {new_return})
                 existing_enc = existing.encode()
-                logger.debug(f"    ... none found. Creating new: {existing_enc!r}")
+                logger.debug(
+                    " ".join(
+                        [*debug_msg, f"none found. Creating new: {existing_enc!r}"]
+                    )
+                )
                 await self.store.set_new_value(memkey, existing_enc)
                 return True
 
@@ -336,7 +340,21 @@ class Memory:
             has_repeated_call = any(map(is_repeated_call, existing.returns))
             should_schedule = in_progress_stale or has_repeated_call
             existing.returns.add(new_return)
-            await self.store.compare_and_set(memkey, existing.encode(), existing_enc)
+            debug_msg += [
+                "(stale," if in_progress_stale else "(fresh,",
+                "repeated," if has_repeated_call else "foreign,",
+                "scheduling)" if should_schedule else "waiting)",
+            ]
+            try:
+                await self.store.compare_and_set(
+                    memkey, existing.encode(), existing_enc
+                )
+            except CompareMismatch:
+                debug_msg += ["Compare mismatch; retrying."]
+                raise
+            finally:
+                logger.debug(" ".join(debug_msg))
+
             return should_schedule
 
         return await self._with_cas(cas_body)
