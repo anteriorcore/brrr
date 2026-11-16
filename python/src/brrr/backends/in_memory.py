@@ -14,7 +14,8 @@ from ..store import Cache, MemKey, Store
 class CloseOnEmptyQueue(Queue):
     """In-memory queue (for testing) which closes when it's empty.
 
-    Closure happens when there is a `get` operation and the queue is empty.
+    Closure happens when there is a `get` operation, the queue is empty, and
+    every other worker is also waiting in a `get` (see `workers` below).
     Doing a get on a queue with only one item will return that item, leave the
     queue empty, but not close it yet.  If the next operation is a put, it is
     accepted, and nothing is closed.
@@ -27,8 +28,17 @@ class CloseOnEmptyQueue(Queue):
     Closure of one topic affects all topics.  Existing messages on other topics
     remain available for reading.
 
-    Good fit for deterministic, single threaded tests.  Poor fit for tests
-    involving multiple concurrent consumers.
+    Closure is not triggered before the first message has been put.
+
+    With multiple concurrent consumers, pass their exact number as `workers`:
+    the queue then only closes once all of them wait in a `get` with nothing
+    left, i.e. nothing is running that could still put new work.  This relies
+    on a worker only doing its next get once it is done handling its previous
+    message, which is how brrr workers behave.  Too low a count closes early,
+    too high never closes.
+
+    Good fit for deterministic tests, single threaded or with N parallel
+    `conn.loop`s.
 
     >>> q = CloseOnEmptyQueue(["t1", "t2"])
     >>> def get(t):
@@ -55,25 +65,63 @@ class CloseOnEmptyQueue(Queue):
         ...
     brrr.queue.QueueIsClosed
 
+    With two workers, one busy worker keeps the queue open:
+
+    >>> async def two_workers():
+    ...     q = CloseOnEmptyQueue(["t1"], workers=2)
+    ...     await q.put_message("t1", "foo")
+    ...     print(await q.get_message("t1"))
+    ...     # Stays open: worker 1 is still busy and may put more work
+    ...     w2 = asyncio.create_task(q.get_message("t1"))
+    ...     await asyncio.sleep(0)
+    ...     await q.put_message("t1", "bar")
+    ...     print(await w2)
+    ...     w1 = asyncio.create_task(q.get_message("t1"))
+    ...     await asyncio.sleep(0)
+    ...     print(w1.done())
+    ...     # Closes: nobody is busy, so no new work can appear
+    ...     try:
+    ...         await q.get_message("t1")
+    ...     except QueueIsClosed:
+    ...         print("worker 2: closed")
+    ...     try:
+    ...         await w1
+    ...     except QueueIsClosed:
+    ...         print("worker 1: closed")
+    ...
+    >>> asyncio.run(two_workers())
+    Message(body='foo')
+    Message(body='bar')
+    False
+    worker 2: closed
+    worker 1: closed
+
     """
 
     _queues: Mapping[str, asyncio.Queue[str]]
 
-    def __init__(self, topics: Sequence[str]):
+    def __init__(self, topics: Sequence[str], workers: int = 1):
+        if workers < 1:
+            raise ValueError(f"workers must be at least 1, got {workers}")
         # Could be updated to allow dynamically creating topics on-demand but
         # this is probably a bit nicer for now.
         self._queues = {k: asyncio.Queue() for k in topics}
+        self._workers = workers
+        self._waiting = 0
         self._had_message = False
 
     @typing.override
     async def get_message(self, topic: str) -> Message:
-        if self._had_message and self._empty():
-            self.close()
         q = self._queues[topic]
+        self._waiting += 1
         try:
+            if self._waiting >= self._workers and self._had_message and self._empty():
+                self.close()
             payload = await q.get()
         except asyncio.QueueShutDown:
             raise QueueIsClosed()
+        finally:
+            self._waiting -= 1
 
         q.task_done()
         return Message(body=payload)
