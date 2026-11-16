@@ -1,3 +1,4 @@
+import asyncio
 import functools
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
@@ -15,9 +16,16 @@ class LocalApp[C]:
     """
 
     def __init__(
-        self, *, topic: str, conn: Server, queue: CloseOnEmptyQueue, app: AppWorker[C]
+        self,
+        *,
+        topic: str,
+        conn: Server,
+        queue: CloseOnEmptyQueue,
+        app: AppWorker[C],
+        workers: int = 1,
     ) -> None:
         self._conn = conn
+        self._workers = workers
         self._app = app
         self._queue = queue
         self._topic = topic
@@ -29,22 +37,33 @@ class LocalApp[C]:
         if self._has_run:
             raise ValueError("LocalApp has already run")
         self._has_run = True
-        await self._conn.loop(self._topic, self._app.handle)
+        await asyncio.gather(
+            *(
+                self._conn.loop(self._topic, self._app.handle)
+                for _ in range(self._workers)
+            )
+        )
 
 
 @asynccontextmanager
 async def local_app[C](
-    topic: str, handlers: Mapping[str, Task[C, ..., Any]], codec: Codec[C]
+    topic: str,
+    handlers: Mapping[str, Task[C, ..., Any]],
+    codec: Codec[C],
+    workers: int = 1,
 ) -> AsyncIterator[LocalApp[C]]:
     """
     Helper function for unit tests which use brrr
+
+    With workers > 1, `run` runs that many concurrent worker loops, e.g. to
+    surface races between overlapping re-runs of a parent task.
     """
     store = InMemoryByteStore()
-    queue = CloseOnEmptyQueue([topic])
+    queue = CloseOnEmptyQueue([topic], workers=workers)
 
     async with serve(queue, store, store) as conn:
         app = AppWorker(handlers=handlers, codec=codec, connection=conn)
-        yield LocalApp(topic=topic, conn=conn, queue=queue, app=app)
+        yield LocalApp(topic=topic, conn=conn, queue=queue, app=app, workers=workers)
 
 
 class LocalBrrr[C]:
@@ -62,12 +81,19 @@ class LocalBrrr[C]:
     The full state is cleared between each .call.  There is no brrr caching
     between calls in this local instance.
 
+    Pass workers > 1 to run that many worker loops concurrently.
+
     """
 
     def __init__(
-        self, topic: str, handlers: Mapping[str, Task[C, ..., Any]], codec: Codec[C]
+        self,
+        topic: str,
+        handlers: Mapping[str, Task[C, ..., Any]],
+        codec: Codec[C],
+        workers: int = 1,
     ):
         self.topic = topic
+        self.workers = workers
         self.handlers = handlers
         self.codec = codec
 
@@ -83,7 +109,10 @@ class LocalBrrr[C]:
 
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             async with local_app(
-                topic=self.topic, handlers=self.handlers, codec=self.codec
+                topic=self.topic,
+                handlers=self.handlers,
+                codec=self.codec,
+                workers=self.workers,
             ) as app:
                 await app.schedule(f)(*args, **kwargs)
                 await app.run()

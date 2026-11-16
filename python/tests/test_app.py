@@ -505,6 +505,31 @@ async def test_gather_parallel_workers(topic: str, task_name: str) -> None:
         assert await app.read(top)(8) == sum(x * 10 for x in range(8))
 
 
+async def test_local_brrr_workers_parallel(topic: str, task_name: str) -> None:
+    name_top, name_block = names(task_name, ("top", "block"))
+    workers = 5
+    barrier: asyncio.Barrier | None = asyncio.Barrier(workers)
+
+    async def block(app: TestContext, a: int) -> int:
+        nonlocal barrier
+        if barrier is not None:
+            # Only passes if all workers hold a job at the same time
+            await barrier.wait()
+        barrier = None
+        return a
+
+    async def top(app: TestContext) -> int:
+        return sum(await app.gather(*(app.call(block)(x) for x in range(workers))))
+
+    b = LocalBrrr(
+        topic=topic,
+        handlers={name_top: top, name_block: block},
+        codec=DemoPickleCodec(),
+        workers=workers,
+    )
+    assert await b.run(top)() == sum(range(workers))
+
+
 async def test_stress_parallel(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = CloseOnSilenceQueue([topic])
