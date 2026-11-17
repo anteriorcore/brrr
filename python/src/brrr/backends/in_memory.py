@@ -110,6 +110,11 @@ class CloseOnEmptyQueue(Queue):
         self._waiting = 0
         self._had_message = False
 
+    @property
+    def workers(self) -> int:
+        """Number of concurrent consumers this queue waits for before closing."""
+        return self._workers
+
     @typing.override
     async def get_message(self, topic: str) -> Message:
         q = self._queues[topic]
