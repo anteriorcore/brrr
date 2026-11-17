@@ -40,7 +40,19 @@ class LocalApp[C]:
             asyncio.create_task(self._conn.loop(self._topic, self._app.handle))
             for _ in range(self._queue.workers)
         ]
-        await asyncio.gather(*loops)
+        # Not asyncio.TaskGroup on purpose: it wraps failures in an
+        # ExceptionGroup, which would change the exception type callers see
+        # (even with workers=1) and break their pytest.raises checks.
+        try:
+            await asyncio.gather(*loops)
+        finally:
+            # If a loop raised (or run() was cancelled, e.g. by a test
+            # timeout), the others can never see the queue close: stop them
+            # and wait, so none hang around or keep running jobs.  On success
+            # they're all done already and this is a no-op.
+            for t in loops:
+                t.cancel()
+            await asyncio.gather(*loops, return_exceptions=True)
 
 
 @asynccontextmanager
