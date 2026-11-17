@@ -505,6 +505,113 @@ async def test_gather_parallel_workers(topic: str, task_name: str) -> None:
         assert await app.read(top)(8) == sum(x * 10 for x in range(8))
 
 
+async def test_local_brrr_workers_parallel(topic: str, task_name: str) -> None:
+    name_top, name_block = names(task_name, ("top", "block"))
+    workers = 5
+    barrier: asyncio.Barrier | None = asyncio.Barrier(workers)
+
+    async def block(app: TestContext, a: int) -> int:
+        nonlocal barrier
+        if barrier is not None:
+            # Only passes if all workers hold a job at the same time
+            await barrier.wait()
+        barrier = None
+        return a
+
+    async def top(app: TestContext) -> int:
+        return sum(await app.gather(*(app.call(block)(x) for x in range(workers))))
+
+    b = LocalBrrr(
+        topic=topic,
+        handlers={name_top: top, name_block: block},
+        codec=DemoPickleCodec(),
+        workers=workers,
+    )
+    assert await b.run(top)() == sum(range(workers))
+
+
+async def test_local_brrr_workers_failure_stops_other_workers(
+    topic: str, task_name: str
+) -> None:
+    name_top, name_boom, name_stuck = names(task_name, ("top", "boom", "stuck"))
+    workers = 3
+    started = 0
+    cancelled = 0
+
+    async def stuck(app: TestContext, a: int) -> int:
+        nonlocal started, cancelled
+        started += 1
+        try:
+            # Never finishes on its own: only cancellation gets it out
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled += 1
+            raise
+        return a
+
+    async def boom(app: TestContext, a: int) -> int:
+        # Fail only once the other workers are mid-job
+        while started < workers - 1:
+            await asyncio.sleep(0)
+        raise RuntimeError("boom")
+
+    async def top(app: TestContext) -> int:
+        return sum(
+            await app.gather(
+                app.call(boom)(0), *(app.call(stuck)(x) for x in range(workers - 1))
+            )
+        )
+
+    b = LocalBrrr(
+        topic=topic,
+        handlers={name_top: top, name_boom: boom, name_stuck: stuck},
+        codec=DemoPickleCodec(),
+        workers=workers,
+    )
+    before = asyncio.all_tasks()
+    # The original exception, not wrapped in an ExceptionGroup
+    with pytest.raises(RuntimeError, match="boom"):
+        await b.run(top)()
+    # The other workers were stopped, not left running
+    assert cancelled == workers - 1
+    assert asyncio.all_tasks() - before == set()
+
+
+async def test_local_brrr_workers_cancel_stops_workers(
+    topic: str, task_name: str
+) -> None:
+    name_top, name_stuck = names(task_name, ("top", "stuck"))
+    workers = 2
+    cancelled = 0
+
+    async def stuck(app: TestContext, a: int) -> int:
+        nonlocal cancelled
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled += 1
+            raise
+        return a
+
+    async def top(app: TestContext) -> int:
+        return sum(await app.gather(*(app.call(stuck)(x) for x in range(workers))))
+
+    b = LocalBrrr(
+        topic=topic,
+        handlers={name_top: top, name_stuck: stuck},
+        codec=DemoPickleCodec(),
+        workers=workers,
+    )
+    before = asyncio.all_tasks()
+    # A test timeout around run() must not leave workers running either
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.1):
+            await b.run(top)()
+    # Every worker finished unwinding before run() gave control back
+    assert cancelled == workers
+    assert asyncio.all_tasks() - before == set()
+
+
 async def test_stress_parallel(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = CloseOnSilenceQueue([topic])
