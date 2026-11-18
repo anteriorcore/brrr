@@ -479,6 +479,32 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
         await asyncio.gather(*(conn.loop(topic, app.handle) for _ in range(parallel)))
 
 
+async def test_gather_parallel_workers(topic: str, task_name: str) -> None:
+    store = InMemoryByteStore()
+    workers = 5
+    queue = CloseOnEmptyQueue([topic], workers=workers)
+    name_top, name_child = names(task_name, ("top", "child"))
+
+    async def child(app: TestContext, a: int) -> int:
+        # Let other workers run, so parent re-runs overlap
+        await asyncio.sleep(0)
+        return a * 10
+
+    async def top(app: TestContext, n: int) -> int:
+        return sum(await app.gather(*(app.call(child)(x) for x in range(n))))
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={name_top: top, name_child: child},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(top, topic=topic)(8)
+        # Returning at all means every loop saw the queue close
+        await asyncio.gather(*(conn.loop(topic, app.handle) for _ in range(workers)))
+        assert await app.read(top)(8) == sum(x * 10 for x in range(8))
+
+
 async def test_stress_parallel(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     queue = CloseOnSilenceQueue([topic])
