@@ -31,37 +31,11 @@ import type { Cache, Store } from "./store.ts";
 import type { Publisher, Subscriber } from "./emitter.ts";
 import { BrrrShutdownSymbol, BrrrTaskDoneEventSymbol } from "./symbol.ts";
 import { parse, stringify } from "superjson";
-import { matrixSuite } from "./fixture.test.ts";
+import { Barrier, matrixSuite } from "./fixture.test.ts";
 import type { Codec } from "./codec.ts";
 import { decoder, encoder } from "./internal-codecs.ts";
 
 type TestContext = DemoJsonCodecContext;
-
-/**
- * Barrier lock.  Compare to python's asyncio.Barrier.
- */
-class Barrier {
-  private count: number;
-  private resolve: () => void;
-  private promise: Promise<void>;
-
-  constructor(count: number) {
-    this.count = count;
-    ({ resolve: this.resolve, promise: this.promise } =
-      Promise.withResolvers<void>());
-  }
-
-  wait(): Promise<void> {
-    if (this.count === 0) {
-      return Promise.reject(new Error("Barrier awaited >n times"));
-    }
-    this.count--;
-    if (this.count === 0) {
-      this.resolve();
-    }
-    return this.promise;
-  }
-}
 
 matrixSuite(import.meta.filename, async (_, matrix) => {
   const codec = new DemoJsonCodec();
