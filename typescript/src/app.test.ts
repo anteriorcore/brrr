@@ -47,12 +47,8 @@ class Barrier {
 
   constructor(count: number) {
     this.count = count;
-    let resolve: null | (() => void) = null;
-    this.promise = new Promise<void>((x) => (resolve = x));
-    if (!resolve) {
-      throw new Error("assertion failed");
-    }
-    this.resolve = resolve;
+    ({ resolve: this.resolve, promise: this.promise } =
+      Promise.withResolvers<void>());
   }
 
   wait(): Promise<void> {
