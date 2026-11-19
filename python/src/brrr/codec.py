@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Awaitable
+from typing import TYPE_CHECKING, Any
 
 from brrr.call import Call
 
@@ -33,7 +33,7 @@ class Codec[C](ABC):
     async def invoke_task(
         self,
         call: Call,
-        task: Task[C, ..., Awaitable[Any]],
+        task: Task[C, ..., Any],
         active_worker: ActiveWorker[C],
         signal: bytes,
     ) -> bytes:
