@@ -39,10 +39,10 @@
   },
   "devDependencies": {
     "@types/bencode": "^4.0.0",
-    "@types/node": "^24.2.1",
+    "@types/node": "^26.6.6",
     "matrix-test": "file:../matrix-test",
     "superjson": "^2.2.2",
-    "typescript": "^5.9.2"
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@aws-sdk/client-dynamodb": "3.926.0",
