@@ -124,8 +124,7 @@ export class Server extends Connection {
     const signal = await this.memory.getSignal(message.rootId);
     const call = await this.memory.getCall(message.callHash);
 
-    const value = await this.memory.getValue(message.callHash);
-    if (value !== undefined) {
+    if (await this.memory.hasValue(message.callHash)) {
       await this.scheduleReturns(message);
       return;
     }
