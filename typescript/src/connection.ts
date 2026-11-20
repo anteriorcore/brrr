@@ -123,6 +123,13 @@ export class Server extends Connection {
     const message = TaggedTuple.decodeFromString(ScheduleMessage, payload);
     const signal = await this.memory.getSignal(message.rootId);
     const call = await this.memory.getCall(message.callHash);
+
+    const value = await this.memory.getValue(message.callHash);
+    if (value !== undefined) {
+      await this.scheduleReturns(message);
+      return;
+    }
+
     const handled = await requestHandler({ call }, this, signal);
     if (handled instanceof Defer) {
       await Promise.all(
@@ -134,27 +141,35 @@ export class Server extends Connection {
     }
     if (handled instanceof Abandon) return;
     await this.memory.setValue(message.callHash, handled.payload);
-    let spawnLimitError: SpawnLimitError;
+    await this.scheduleReturns(message);
+    return call;
+  }
+
+  private async scheduleReturns(message: ScheduleMessage) {
+    const spawnLimitErrors: SpawnLimitError[] = [];
+
+    const scheduleReturnsHelper = async (
+      returns: ReadonlySet<PendingReturn>,
+    ): Promise<void> => {
+      for (const pending of returns) {
+        try {
+          await this.scheduleReturnCall(pending);
+        } catch (err) {
+          if (err instanceof SpawnLimitError) {
+            spawnLimitErrors.push(err);
+            continue;
+          }
+          throw err;
+        }
+      }
+    };
+
     await this.memory.withPendingReturnsRemove(
       message.callHash,
-      async (returns) => {
-        for (const pending of returns) {
-          try {
-            await this.scheduleReturnCall(pending);
-          } catch (err) {
-            if (err instanceof SpawnLimitError) {
-              spawnLimitError = err;
-              continue;
-            }
-            throw err;
-          }
-        }
-        if (spawnLimitError) {
-          throw spawnLimitError;
-        }
-      },
+      scheduleReturnsHelper,
     );
-    return call;
+    if (spawnLimitErrors.length === 1) throw spawnLimitErrors[0];
+    if (spawnLimitErrors.length > 1) throw new AggregateError(spawnLimitErrors);
   }
 
   private async scheduleReturnCall(

@@ -51,6 +51,23 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
   let emitter: Publisher & Subscriber;
   let server: SubscriberServer;
 
+  // Pull-mode queue for tests that drive a Server with `loop`.
+  let queues: Record<string, (string | typeof BrrrShutdownSymbol)[]>;
+
+  const publisher: Publisher = {
+    async emit(topic: string, callId: string | Call): Promise<void> {
+      queues[topic]?.push(callId as string);
+    },
+  };
+
+  async function flusher() {
+    const item = queues[topic]?.shift();
+    if (!item) {
+      return BrrrShutdownSymbol;
+    }
+    return item;
+  }
+
   // Test tasks
   function bar(_: TestContext, a: number) {
     return 456;
@@ -90,6 +107,9 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
     cache = new InMemoryCache();
     emitter = new InMemoryEmitter();
     server = new SubscriberServer(store, cache, emitter);
+    queues = {
+      [topic]: [],
+    };
   });
 
   test(AppWorker.name, async () => {
@@ -164,17 +184,18 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
         return Promise.all(xs.map((x) => notBrrrTask(app, x)));
       }
 
-      const localBrrr = new LocalBrrr(topic, {
-        codec,
-        handlers: { foo, bar, top },
-      });
-      await localBrrr.run(top)([3, 4]);
+      const server = new Server(store, cache, publisher);
+      const app = new AppWorker(codec, server, { foo, bar, top });
+
+      await app.schedule(top, topic)([3, 4]);
+      await server.loop(topic, app.handle, flusher);
+      deepStrictEqual(await app.read(top)([3, 4]), [5, 7]);
       return calls;
     }
 
     test("app gather", async () => {
       const brrrCalls = await callNestedGather();
-      strictEqual(brrrCalls.filter((it) => it.startsWith("top")).length, 5);
+      strictEqual(brrrCalls.filter((it) => it.startsWith("top")).length, 4);
       const foo3 = brrrCalls.indexOf("foo(3)");
       const foo4 = brrrCalls.indexOf("foo(4)");
       const bar6 = brrrCalls.indexOf("bar(6)");
@@ -357,27 +378,9 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   suite("loop mode", async () => {
-    let queues: Record<string, (string | typeof BrrrShutdownSymbol)[]>;
     let server: Server;
 
-    const publisher: Publisher = {
-      async emit(topic: string, callId: string | Call): Promise<void> {
-        queues[topic]?.push(callId as string);
-      },
-    };
-
-    async function flusher() {
-      const item = queues[topic]?.shift();
-      if (!item) {
-        return BrrrShutdownSymbol;
-      }
-      return item;
-    }
-
     beforeEach(() => {
-      queues = {
-        [topic]: [],
-      };
       server = new Server(store, cache, publisher);
     });
 
@@ -415,6 +418,38 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(empty_root_id, undefined);
       await server.loop(topic, app.handle, flusher);
       strictEqual(calls.length, 1);
+    });
+
+    test("duplicate message after completion is skipped", async () => {
+      const calls = new Map<string, number>();
+      function child(_ctx: TestContext, _a: number): number {
+        calls.set("child", (calls.get("child") || 0) + 1);
+        return 1;
+      }
+
+      async function parent(app: TestContext, a: number): Promise<number> {
+        calls.set("parent", (calls.get("parent") || 0) + 1);
+        const results = await app.gather(
+          ...new Array(a).keys().map((i) => app.call(child)(i)),
+        );
+        return results.reduce((sum, val) => sum + val);
+      }
+
+      const server = new Server(store, cache, publisher);
+      const app = new AppWorker(codec, server, { parent, child });
+
+      await app.schedule(parent, topic)(4);
+      const message = queues[topic]?.[0];
+      ok(message);
+      await server.loop(topic, app.handle, flusher);
+      const before = Object.fromEntries(calls);
+
+      // Redeliver the finished parent's message: it must not run again.
+      queues[topic]?.push(message);
+      await server.loop(topic, app.handle, flusher);
+
+      deepStrictEqual(Object.fromEntries(calls), before);
+      strictEqual(await app.read(parent)(4), 4);
     });
 
     test("abandon", async () => {
@@ -712,7 +747,7 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
         const app = new AppWorker(codec, server, { foo, one });
         await app.schedule(foo, topic)(server.spawnLimit + 3);
 
-        await rejects(server.loop(topic, app.handle, flusher));
+        await rejects(server.loop(topic, app.handle, flusher), SpawnLimitError);
         deepStrictEqual(Object.fromEntries(calls), {
           one: server.spawnLimit / 2,
           foo: server.spawnLimit / 2,
