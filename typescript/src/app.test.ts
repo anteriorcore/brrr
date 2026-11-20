@@ -184,18 +184,17 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
         return Promise.all(xs.map((x) => notBrrrTask(app, x)));
       }
 
-      const server = new Server(store, cache, publisher);
-      const app = new AppWorker(codec, server, { foo, bar, top });
-
-      await app.schedule(top, topic)([3, 4]);
-      await server.loop(topic, app.handle, flusher);
-      deepStrictEqual(await app.read(top)([3, 4]), [5, 7]);
+      const localBrrr = new LocalBrrr(topic, {
+        codec,
+        handlers: { foo, bar, top },
+      });
+      await localBrrr.run(top)([3, 4]);
       return calls;
     }
 
     test("app gather", async () => {
       const brrrCalls = await callNestedGather();
-      strictEqual(brrrCalls.filter((it) => it.startsWith("top")).length, 4);
+      strictEqual(brrrCalls.filter((it) => it.startsWith("top")).length, 5);
       const foo3 = brrrCalls.indexOf("foo(3)");
       const foo4 = brrrCalls.indexOf("foo(4)");
       const bar6 = brrrCalls.indexOf("bar(6)");
