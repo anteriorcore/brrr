@@ -145,7 +145,7 @@ export class Server extends Connection {
   }
 
   private async scheduleReturns(message: ScheduleMessage) {
-    const spawnLimitErrors: SpawnLimitError[] = [];
+    let spawnLimitError: SpawnLimitError | undefined;
 
     const scheduleReturnsHelper = async (
       returns: ReadonlySet<PendingReturn>,
@@ -155,7 +155,7 @@ export class Server extends Connection {
           await this.scheduleReturnCall(pending);
         } catch (err) {
           if (err instanceof SpawnLimitError) {
-            spawnLimitErrors.push(err);
+            spawnLimitError = err;
             continue;
           }
           throw err;
@@ -167,8 +167,9 @@ export class Server extends Connection {
       message.callHash,
       scheduleReturnsHelper,
     );
-    if (spawnLimitErrors.length === 1) throw spawnLimitErrors[0];
-    if (spawnLimitErrors.length > 1) throw new AggregateError(spawnLimitErrors);
+    if (spawnLimitError !== undefined) {
+      throw spawnLimitError;
+    }
   }
 
   private async scheduleReturnCall(
