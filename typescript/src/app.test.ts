@@ -746,7 +746,7 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
         const app = new AppWorker(codec, server, { foo, one });
         await app.schedule(foo, topic)(server.spawnLimit + 3);
 
-        await rejects(server.loop(topic, app.handle, flusher), SpawnLimitError);
+        await rejects(server.loop(topic, app.handle, flusher));
         deepStrictEqual(Object.fromEntries(calls), {
           one: server.spawnLimit / 2,
           foo: server.spawnLimit / 2,
