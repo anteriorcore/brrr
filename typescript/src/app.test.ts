@@ -51,23 +51,6 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
   let emitter: Publisher & Subscriber;
   let server: SubscriberServer;
 
-  // Pull-mode queue for tests that drive a Server with `loop`.
-  let queues: Record<string, (string | typeof BrrrShutdownSymbol)[]>;
-
-  const publisher: Publisher = {
-    async emit(topic: string, callId: string | Call): Promise<void> {
-      queues[topic]?.push(callId as string);
-    },
-  };
-
-  async function flusher() {
-    const item = queues[topic]?.shift();
-    if (!item) {
-      return BrrrShutdownSymbol;
-    }
-    return item;
-  }
-
   // Test tasks
   function bar(_: TestContext, a: number) {
     return 456;
@@ -107,9 +90,6 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
     cache = new InMemoryCache();
     emitter = new InMemoryEmitter();
     server = new SubscriberServer(store, cache, emitter);
-    queues = {
-      [topic]: [],
-    };
   });
 
   test(AppWorker.name, async () => {
@@ -377,9 +357,27 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
   });
 
   suite("loop mode", async () => {
+    let queues: Record<string, (string | typeof BrrrShutdownSymbol)[]>;
     let server: Server;
 
+    const publisher: Publisher = {
+      async emit(topic: string, callId: string | Call): Promise<void> {
+        queues[topic]?.push(callId as string);
+      },
+    };
+
+    async function flusher() {
+      const item = queues[topic]?.shift();
+      if (!item) {
+        return BrrrShutdownSymbol;
+      }
+      return item;
+    }
+
     beforeEach(() => {
+      queues = {
+        [topic]: [],
+      };
       server = new Server(store, cache, publisher);
     });
 
