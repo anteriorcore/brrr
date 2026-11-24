@@ -417,6 +417,38 @@ matrixSuite(import.meta.filename, async (_, matrix) => {
       strictEqual(calls.length, 1);
     });
 
+    test("duplicate message after completion is skipped", async () => {
+      const calls = new Map<string, number>();
+      function child(_ctx: TestContext, _a: number): number {
+        calls.set("child", (calls.get("child") || 0) + 1);
+        return 1;
+      }
+
+      async function parent(app: TestContext, a: number): Promise<number> {
+        calls.set("parent", (calls.get("parent") || 0) + 1);
+        const results = await app.gather(
+          ...new Array(a).keys().map((i) => app.call(child)(i)),
+        );
+        return results.reduce((sum, val) => sum + val);
+      }
+
+      const server = new Server(store, cache, publisher);
+      const app = new AppWorker(codec, server, { parent, child });
+
+      await app.schedule(parent, topic)(4);
+      const message = queues[topic]?.[0];
+      ok(message);
+      await server.loop(topic, app.handle, flusher);
+      const before = Object.fromEntries(calls);
+
+      // Redeliver the finished parent's message: it must not run again.
+      queues[topic]?.push(message);
+      await server.loop(topic, app.handle, flusher);
+
+      deepStrictEqual(Object.fromEntries(calls), before);
+      strictEqual(await app.read(parent)(4), 4);
+    });
+
     test("abandon", async () => {
       async function fib(app: TestContext, n: number): Promise<number> {
         if (n == 0) return 0;
