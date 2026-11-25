@@ -411,3 +411,5 @@ class Server(Connection):
                 return
 
             await self._handle_msg(handler, topic, message.body)
+            if message.receipt_handle is not None:
+                await self._queue.delete_message(topic, message.receipt_handle)
