@@ -14,13 +14,25 @@ class QueueIsClosed(Exception):
 
 @dataclass
 class Message:
-    """Pointless future proof wrapper around getting a queue message.
+    """Result of a queue Read operation.
 
-    YAGNI and all but something tells me this will be necessary again soon.
+    body is the raw payload.  Not bytes; it is up to the codec to actually
+    respect this, but the assumption is that the message payload is encodable as
+    printable characters, and compatible with the Queue implementation.  This is
+    not _strictly_ speaking a requirement by brrr lib, because brrr lib doesn't
+    care, as long as your queue is able to handle it: the user brings both the
+    codec and the queue implementation, so it "should be fine".  However, you
+    almost certainly want printable characters here, so we made the type `str`
+    rather than bytes.
+
+    Receipt_handle is like SQS.  It is of course up to the actual queue
+    implementation to support this, but if it wants to, it can.  This makes brrr
+    at-least-once-delivery, instead of zero-or-more.
 
     """
 
     body: str
+    receipt_handle: str | None
 
 
 @dataclass
@@ -55,3 +67,5 @@ class Queue(ABC):
     async def put_message(self, topic: str, body: str) -> None: ...
     @abstractmethod
     async def get_message(self, topic: str) -> Message: ...
+    @abstractmethod
+    async def delete_message(self, topic: str, receipt_handle: str) -> None: ...

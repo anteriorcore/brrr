@@ -40,16 +40,16 @@ class CloseOnEmptyQueue(Queue):
     >>> asyncio.run(q.put_message("t1", "foo"))
     >>> asyncio.run(q.put_message("t2", "bar"))
     >>> get("t1")
-    Message(body='foo')
+    Message(body='foo', receipt_handle=None)
     >>> get("t1")
     Traceback (most recent call last):
         ...
     TimeoutError
     >>> asyncio.run(q.put_message("t1", "frob"))
     >>> get("t2")
-    Message(body='bar')
+    Message(body='bar', receipt_handle=None)
     >>> get("t1")
-    Message(body='frob')
+    Message(body='frob', receipt_handle=None)
     >>> get("t2")
     Traceback (most recent call last):
         ...
@@ -76,7 +76,11 @@ class CloseOnEmptyQueue(Queue):
             raise QueueIsClosed()
 
         q.task_done()
-        return Message(body=payload)
+        return Message(body=payload, receipt_handle=None)
+
+    @typing.override
+    async def delete_message(self, topic: str, receipt_handle: str) -> None:
+        raise NotImplementedError()
 
     @typing.override
     async def put_message(self, topic: str, body: str) -> None:
@@ -137,7 +141,11 @@ class CloseOnSilenceQueue(Queue):
             raise QueueIsClosed()
 
         q.task_done()
-        return Message(body=payload)
+        return Message(body=payload, receipt_handle=None)
+
+    @typing.override
+    async def delete_message(self, topic: str, receipt_handle: str) -> None:
+        raise NotImplementedError()
 
     @typing.override
     async def put_message(self, topic: str, body: str) -> None:

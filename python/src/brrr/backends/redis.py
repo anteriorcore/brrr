@@ -32,7 +32,7 @@ class RedisQueue(Queue, Cache):
         )
         if not response:
             raise QueueIsEmpty()
-        return Message(response[1].decode("utf-8"))
+        return Message(body=response[1].decode("utf-8"), receipt_handle=None)
 
     async def get_info(self, topic: str) -> QueueInfo:
         total = await self.client.llen(f"brrr/messages/{topic}")
