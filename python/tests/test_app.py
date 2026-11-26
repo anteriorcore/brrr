@@ -26,7 +26,6 @@ from brrr import (
 from brrr.backends.dynamo import DynamoDbMemStore
 from brrr.backends.in_memory import (
     CloseOnEmptyQueue,
-    CloseOnSilenceQueue,
     InMemoryByteStore,
 )
 from brrr.call import Call
@@ -316,7 +315,7 @@ async def test_exc_gather(topic: str, task_name: str) -> None:
 async def test_topics_separate_app_same_conn(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     t1, t2 = names(topic, ("1", "2"))
-    queue = CloseOnSilenceQueue([t1, t2])
+    queue = CloseOnEmptyQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
     async def one(app: TestContext, a: int) -> int:
@@ -340,7 +339,7 @@ async def test_topics_separate_app_same_conn(topic: str, task_name: str) -> None
 async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     t1, t2 = names(topic, ("1", "2"))
-    queue = CloseOnSilenceQueue([t1, t2])
+    queue = CloseOnEmptyQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
     async def one(app: TestContext, a: int) -> int:
@@ -367,7 +366,7 @@ async def test_topics_separate_app_separate_conn(topic: str, task_name: str) -> 
 async def test_topics_same_app(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
     t1, t2 = names(topic, ("1", "2"))
-    queue = CloseOnSilenceQueue([t1, t2])
+    queue = CloseOnEmptyQueue([t1, t2])
     name_one, name_two = names(task_name, ("one", "two"))
 
     async def one(app: TestContext, a: int) -> int:
@@ -445,7 +444,7 @@ async def test_stop_when_empty(topic: str, task_name: str) -> None:
 @pytest.mark.parametrize("use_gather", [(False,), (True,)])
 async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
     store = InMemoryByteStore()
-    queue = CloseOnSilenceQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
     name_top, name_block = names(task_name, ("top", "block"))
 
     parallel = 5
@@ -481,7 +480,7 @@ async def test_parallel(topic: str, task_name: str, use_gather: bool) -> None:
 
 async def test_stress_parallel(topic: str, task_name: str) -> None:
     store = InMemoryByteStore()
-    queue = CloseOnSilenceQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
 
     name_top, name_fib = names(task_name, ("top", "fib"))
 
@@ -547,7 +546,7 @@ async def test_no_debounce_parent(topic: str) -> None:
     calls = Counter[str]()
     num_workers = 10
     store = InMemoryByteStore()
-    queue = CloseOnSilenceQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
     barrier = asyncio.Barrier(2)
 
     async def child(app: TestContext, a: int) -> int:
@@ -581,7 +580,7 @@ async def test_no_debounce_parent(topic: str) -> None:
 async def test_visibility_timeout(topic: str, task_name: str) -> None:
     calls = Counter[str]()
     store = InMemoryByteStore()
-    queue = CloseOnSilenceQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
     name_foo, name_bar = names(task_name, ("foo", "bar"))
     barrier = asyncio.Barrier(2)
     cast(Any, store).now = Mock(return_value=0)
@@ -601,7 +600,7 @@ async def test_visibility_timeout(topic: str, task_name: str) -> None:
     async def schedule_future(n: int) -> None:
         """Wait until everything has settled, fast-forward the clock, and reschedule"""
         # this is "probably enough", but not so long that it triggers the
-        # CloseOnSilenceQueue
+        # CloseOnEmptyQueue
         await asyncio.sleep(0.1)
         cast(Mock, store.now).return_value = 1_000_000_000
         await schedule_now(n)
@@ -635,7 +634,7 @@ async def test_visibility_timeout_zero(topic: str, task_name: str) -> None:
 
     """
     store = InMemoryByteStore()
-    queue = CloseOnSilenceQueue([topic])
+    queue = CloseOnEmptyQueue([topic])
     calls = Counter[int]()
     p = 5
     N = 3
@@ -701,6 +700,7 @@ async def test_app_loop_resumable(topic: str) -> None:
                 await conn.loop(topic, app.handle)
                 break
             except MyError:
+                queue.clear()
                 continue
         assert await app.read(foo)(29) == 29
 
@@ -740,6 +740,7 @@ async def test_app_loop_resumable_nested(topic: str, task_name: str) -> None:
                 await conn.loop(topic, app.handle)
                 break
             except MyError:
+                queue.clear()
                 continue
         assert await app.read(foo)(3) == 3
 
@@ -970,3 +971,30 @@ async def test_no_overwrite_return() -> None:
                 conn.loop(topic, app.handle), conn.loop(topic, app.handle)
             )
             assert await app.read(foo)() == "first"
+
+
+# Other tests technically already cover this somewhat, but this test stress
+# tests the requirement for the in-memory queue to not shut down when any work
+# is in progress, even if some worker reports being idle.
+async def test_more_workers_than_jobs() -> None:
+    store = InMemoryByteStore()
+    queue = CloseOnEmptyQueue(["test"])
+
+    async def bar(app: TestContext) -> int:
+        return 3
+
+    async def foo(app: TestContext) -> int:
+        await asyncio.sleep(1)
+        return await app.call(bar)()
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={"bar": bar, "foo": foo},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(foo, topic="test")()
+
+        await asyncio.gather(
+            conn.loop("test", app.handle), conn.loop("test", app.handle)
+        )

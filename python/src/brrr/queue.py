@@ -50,13 +50,37 @@ class QueueInfo:
 
 
 class Queue(ABC):
-    # Inspired by SQS: maximum time for a get_message call to block while
-    # waiting for new messages, if there are currently no messages on the queue.
-    # Just as with SQS, if there is a message, return immediately.  This value
-    # is best effort, just a way to keep this DRY if nothing else.  If the
-    # underlying queue doesn’t support this primitive it’s OK, but don’t sleep
-    # for this time indiscriminately because the point of this value is to block
-    # only while there are no messages available.
+    """The queue backing brrr must satisfy this interface.
+
+    Required semantics:
+    - topics
+    - string message payloads
+
+    Not required:
+    - at-least-once delivery guarantees
+    - at-most-once delivery guarantees
+    - receipt handle support
+    - order
+
+    As with the Store interface, consistency and availability guarantees are up
+    to the implementation of this interface, and they will transparently bubble
+    up, through brrr, to the application.  The implementation can choose to
+    implement visibility timeouts, retries, and dead-lettering, or it can choose
+    to forego all of that and be zero-or-more delivery.  Brrr will be fine; your
+    application will have to handle the consequences.
+
+    The recv_block_secs is inspired by SQS: maximum time for a get_message call
+    to block while waiting for new messages, if there are currently no messages
+    on the queue.  Just as with SQS, if there is a message, return immediately.
+    This value is best effort, just a way to keep this DRY if nothing else.  If
+    the underlying queue doesn’t support this primitive it’s OK, but don’t sleep
+    for this time indiscriminately because the point of this value is to block
+    only while there are no messages available.
+
+    Bare SQS _could_ satisfy this interface if you had only one single topic.
+
+    """
+
     recv_block_secs: int = 20
 
     throws_queue_is_closed: bool

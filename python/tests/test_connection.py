@@ -1,7 +1,11 @@
 import brrr
 import pytest
 from brrr import Connection, Defer, DeferredCall, Request, Response
-from brrr.backends.in_memory import CloseOnEmptyQueue, InMemoryByteStore
+from brrr.backends.in_memory import (
+    CloseOnEmptyQueue,
+    CloseOnSilenceQueue,
+    InMemoryByteStore,
+)
 from brrr.call import Call
 from brrr.connection import Abandon
 
@@ -51,7 +55,7 @@ async def test_conn_raw() -> None:
 
 async def test_conn_exception() -> None:
     store = InMemoryByteStore()
-    queue = CloseOnEmptyQueue([TOPIC])
+    queue = CloseOnSilenceQueue([TOPIC])
 
     count = 0
 
