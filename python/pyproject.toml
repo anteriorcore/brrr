@@ -31,6 +31,7 @@ dev = [
     "types-aiobotocore-dynamodb>=2.18.0",
     "asyncio-redis>=0.16.0",
     "mypy>=1.15.0",
+    "anyio>=4.16.0",
 ]
 
 [build-system]

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock
 import aioboto3
 import brrr
 import pytest
+from anyio import wait_all_tasks_blocked
 from brrr import (
     Abandon,
     ActiveWorker,
@@ -984,7 +985,7 @@ async def test_more_workers_than_jobs() -> None:
         return 3
 
     async def foo(app: TestContext) -> int:
-        await asyncio.sleep(1)
+        await wait_all_tasks_blocked()
         return await app.call(bar)()
 
     async with brrr.serve(queue, store, store) as conn:
