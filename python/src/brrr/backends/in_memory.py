@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import typing
-from collections.abc import Mapping, Sequence
+from collections import defaultdict
+from collections.abc import Mapping, MutableSet, Sequence
 from typing import override
+from uuid import uuid4
 
 from brrr.store import CompareMismatch, NotFoundError
 
@@ -14,10 +16,10 @@ from ..store import Cache, MemKey, Store
 class CloseOnEmptyQueue(Queue):
     """In-memory queue (for testing) which closes when it's empty.
 
-    Closure happens when there is a `get` operation and the queue is empty.
-    Doing a get on a queue with only one item will return that item, leave the
-    queue empty, but not close it yet.  If the next operation is a put, it is
-    accepted, and nothing is closed.
+    Closure happens when there is a `get` operation and the queue is empty (no
+    visible nor invisible messages).  Doing a get on a queue with only one item
+    will return that item, leave the queue empty, but not close it yet.  If the
+    next operation is a put, it is accepted, and nothing is closed.
 
     The queue is topic aware: doing a get on topic A, when topic A is empty, but
     there is a message on topic B, will block the get until a message is
@@ -26,9 +28,6 @@ class CloseOnEmptyQueue(Queue):
 
     Closure of one topic affects all topics.  Existing messages on other topics
     remain available for reading.
-
-    Good fit for deterministic, single threaded tests.  Poor fit for tests
-    involving multiple concurrent consumers.
 
     >>> q = CloseOnEmptyQueue(["t1", "t2"])
     >>> def get(t):
@@ -40,30 +39,46 @@ class CloseOnEmptyQueue(Queue):
     >>> asyncio.run(q.put_message("t1", "foo"))
     >>> asyncio.run(q.put_message("t2", "bar"))
     >>> get("t1")
-    Message(body='foo')
+    Message(body='foo', receipt_handle=...)
     >>> get("t1")
     Traceback (most recent call last):
         ...
     TimeoutError
     >>> asyncio.run(q.put_message("t1", "frob"))
     >>> get("t2")
-    Message(body='bar')
+    Message(body='bar', receipt_handle=...)
     >>> get("t1")
-    Message(body='frob')
-    >>> get("t2")
-    Traceback (most recent call last):
-        ...
-    brrr.queue.QueueIsClosed
+    Message(body='frob', receipt_handle=...)
 
     """
 
     _queues: Mapping[str, asyncio.Queue[str]]
+    # This queue doesn’t make elements visible again after timeout so we don’t
+    # need to track body here.  It’s just for tracking work, not the messages.
+    _in_flight: Mapping[str, MutableSet[str]]
 
     def __init__(self, topics: Sequence[str]):
         # Could be updated to allow dynamically creating topics on-demand but
         # this is probably a bit nicer for now.
-        self._queues = {k: asyncio.Queue() for k in topics}
         self._had_message = False
+        self._topics = topics
+        self.clear()
+
+    def _empty(self) -> bool:
+        """No messages in flight nor pending"""
+        return all(map(lambda q: q.empty(), self._queues.values())) and not any(
+            self._in_flight.values()
+        )
+
+    def clear(self) -> None:
+        """Initialize all state to empty"""
+        self._queues = {k: asyncio.Queue() for k in self._topics}
+        self._in_flight = defaultdict(set)
+
+    @typing.override
+    async def delete_message(self, topic: str, receipt_handle: str) -> None:
+        self._in_flight[topic].remove(receipt_handle)
+        return
 
     @typing.override
     async def get_message(self, topic: str) -> Message:
@@ -75,8 +90,9 @@ class CloseOnEmptyQueue(Queue):
         except asyncio.QueueShutDown:
             raise QueueIsClosed()
 
-        q.task_done()
-        return Message(body=payload)
+        receipt_handle = str(uuid4())
+        self._in_flight[topic].add(receipt_handle)
+        return Message(body=payload, receipt_handle=receipt_handle)
 
     @typing.override
     async def put_message(self, topic: str, body: str) -> None:
@@ -86,9 +102,6 @@ class CloseOnEmptyQueue(Queue):
     def close(self) -> None:
         for q in self._queues.values():
             q.shutdown()
-
-    def _empty(self) -> bool:
-        return all(map(lambda q: q.empty(), self._queues.values()))
 
     async def get_info(self, topic: str) -> QueueInfo:
         return QueueInfo(num_messages=self._queues[topic].qsize())
@@ -136,8 +149,7 @@ class CloseOnSilenceQueue(Queue):
         except asyncio.QueueShutDown:
             raise QueueIsClosed()
 
-        q.task_done()
-        return Message(body=payload)
+        return Message(body=payload, receipt_handle=None)
 
     @typing.override
     async def put_message(self, topic: str, body: str) -> None:

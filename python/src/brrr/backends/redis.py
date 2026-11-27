@@ -22,17 +22,19 @@ class RedisQueue(Queue, Cache):
     async def setup(self) -> None:
         pass
 
+    @typing.override
     async def put_message(self, topic: str, body: str) -> None:
         logger.debug(f"Putting new message on {topic}")
         await self.client.rpush(f"brrr/messages/{topic}", body.encode("utf-8"))
 
+    @typing.override
     async def get_message(self, topic: str) -> Message:
         response = await self.client.blpop(
             f"brrr/messages/{topic}", self.recv_block_secs
         )
         if not response:
             raise QueueIsEmpty()
-        return Message(response[1].decode("utf-8"))
+        return Message(body=response[1].decode("utf-8"), receipt_handle=None)
 
     async def get_info(self, topic: str) -> QueueInfo:
         total = await self.client.llen(f"brrr/messages/{topic}")

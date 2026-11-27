@@ -3,7 +3,11 @@ from collections import Counter
 import brrr
 import pytest
 from brrr import AppWorker, SpawnLimitError
-from brrr.backends.in_memory import CloseOnEmptyQueue, InMemoryByteStore
+from brrr.backends.in_memory import (
+    CloseOnEmptyQueue,
+    CloseOnSilenceQueue,
+    InMemoryByteStore,
+)
 from brrr.demo_pickle_codec import DemoPickleCodec, DemoPickleCodecContext
 
 from .parametrize import names
@@ -68,7 +72,7 @@ async def test_spawn_limit_breadth_mapped(topic: str, task_name: str) -> None:
 
 
 async def test_spawn_limit_recoverable(topic: str, task_name: str) -> None:
-    queue = CloseOnEmptyQueue([topic])
+    queue = CloseOnSilenceQueue([topic])
     store = InMemoryByteStore()
     cache = InMemoryByteStore()
     name_one, name_foo = names(task_name, ("one", "foo"))
