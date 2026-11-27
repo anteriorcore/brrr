@@ -600,9 +600,7 @@ async def test_visibility_timeout(topic: str, task_name: str) -> None:
 
     async def schedule_future(n: int) -> None:
         """Wait until everything has settled, fast-forward the clock, and reschedule"""
-        # this is "probably enough", but not so long that it triggers the
-        # CloseOnEmptyQueue
-        await asyncio.sleep(0.1)
+        await wait_all_tasks_blocked()
         cast(Mock, store.now).return_value = 1_000_000_000
         await schedule_now(n)
 
