@@ -16,10 +16,10 @@ from ..store import Cache, MemKey, Store
 class CloseOnEmptyQueue(Queue):
     """In-memory queue (for testing) which closes when it's empty.
 
-    Closure happens when there is a `get` operation and the queue is empty.
-    Doing a get on a queue with only one item will return that item, leave the
-    queue empty, but not close it yet.  If the next operation is a put, it is
-    accepted, and nothing is closed.
+    Closure happens when there is a `get` operation and the queue is empty (no
+    visible nor invisible messages).  Doing a get on a queue with only one item
+    will return that item, leave the queue empty, but not close it yet.  If the
+    next operation is a put, it is accepted, and nothing is closed.
 
     The queue is topic aware: doing a get on topic A, when topic A is empty, but
     there is a message on topic B, will block the get until a message is
@@ -28,9 +28,6 @@ class CloseOnEmptyQueue(Queue):
 
     Closure of one topic affects all topics.  Existing messages on other topics
     remain available for reading.
-
-    Good fit for deterministic, single threaded tests.  Poor fit for tests
-    involving multiple concurrent consumers.
 
     >>> q = CloseOnEmptyQueue(["t1", "t2"])
     >>> def get(t):
@@ -93,7 +90,6 @@ class CloseOnEmptyQueue(Queue):
         except asyncio.QueueShutDown:
             raise QueueIsClosed()
 
-        q.task_done()
         receipt_handle = str(uuid4())
         self._in_flight[topic].add(receipt_handle)
         return Message(body=payload, receipt_handle=receipt_handle)
@@ -153,12 +149,7 @@ class CloseOnSilenceQueue(Queue):
         except asyncio.QueueShutDown:
             raise QueueIsClosed()
 
-        q.task_done()
         return Message(body=payload, receipt_handle=None)
-
-    @typing.override
-    async def delete_message(self, topic: str, receipt_handle: str) -> None:
-        raise NotImplementedError()
 
     @typing.override
     async def put_message(self, topic: str, body: str) -> None:

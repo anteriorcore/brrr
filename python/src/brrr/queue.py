@@ -91,5 +91,7 @@ class Queue(ABC):
     async def put_message(self, topic: str, body: str) -> None: ...
     @abstractmethod
     async def get_message(self, topic: str) -> Message: ...
-    @abstractmethod
-    async def delete_message(self, topic: str, receipt_handle: str) -> None: ...
+
+    async def delete_message(self, topic: str, receipt_handle: str) -> None:
+        # Optional
+        pass

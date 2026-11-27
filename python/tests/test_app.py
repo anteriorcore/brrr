@@ -998,3 +998,31 @@ async def test_more_workers_than_jobs() -> None:
         await asyncio.gather(
             conn.loop("test", app.handle), conn.loop("test", app.handle)
         )
+
+
+async def test_no_delete_failing() -> None:
+    store = InMemoryByteStore()
+
+    class NoDeleteQueue(CloseOnEmptyQueue):
+        @override
+        async def delete_message(self, topic: str, receipt_handle: str) -> None:
+            raise Exception("Do not delete")
+
+    queue = NoDeleteQueue(["test"])
+
+    class MyError(Exception):
+        pass
+
+    async def foo(app: TestContext) -> int:
+        raise MyError()
+
+    async with brrr.serve(queue, store, store) as conn:
+        app = AppWorker(
+            handlers={"foo": foo},
+            codec=DemoPickleCodec(),
+            connection=conn,
+        )
+        await app.schedule(foo, topic="test")()
+
+        with pytest.raises(MyError):
+            await conn.loop("test", app.handle)

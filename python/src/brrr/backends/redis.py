@@ -23,10 +23,6 @@ class RedisQueue(Queue, Cache):
         pass
 
     @typing.override
-    async def delete_message(self, topic: str, receipt_handle: str) -> None:
-        raise NotImplementedError()
-
-    @typing.override
     async def put_message(self, topic: str, body: str) -> None:
         logger.debug(f"Putting new message on {topic}")
         await self.client.rpush(f"brrr/messages/{topic}", body.encode("utf-8"))
